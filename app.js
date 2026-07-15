@@ -151,10 +151,47 @@ document.getElementById("settingsBtn").addEventListener("click", () => {
   document.getElementById("permSummary").innerHTML = [...perms.entries()]
     .map(([p, modes]) => `<div class="kvRow"><span class="k">${p}</span><span class="v">${modes.join(", ")}</span></div>`)
     .join("");
-  document.getElementById("companionStatus").textContent =
-    companion.isConfigured() ? "configured" : "not configured (stub)";
+  refreshCompanionStatus();
+  const cfg = companion.getConfig();
+  document.getElementById("companionEndpoint").value = cfg.endpoint;
+  document.getElementById("companionToken").value = cfg.token;
+  document.getElementById("companionSaveNote").textContent = "";
   document.getElementById("storageCount").textContent = String(storage.keys().length);
   openSheet("settingsSheet");
+});
+
+function refreshCompanionStatus() {
+  document.getElementById("companionStatus").textContent =
+    companion.isConfigured() ? "configured (local bridge)" : "not configured";
+}
+
+document.getElementById("companionSaveBtn").addEventListener("click", () => {
+  companion.setConfig(
+    document.getElementById("companionEndpoint").value,
+    document.getElementById("companionToken").value);
+  refreshCompanionStatus();
+  document.getElementById("companionSaveNote").textContent =
+    companion.isConfigured() ? "Saved on this device." : "Cleared — both fields are needed.";
+});
+
+document.getElementById("companionForgetBtn").addEventListener("click", () => {
+  companion.setConfig("", "");
+  document.getElementById("companionEndpoint").value = "";
+  document.getElementById("companionToken").value = "";
+  refreshCompanionStatus();
+  document.getElementById("companionSaveNote").textContent = "Forgotten on this device.";
+});
+
+document.getElementById("companionTestBtn").addEventListener("click", async () => {
+  const note = document.getElementById("companionSaveNote");
+  companion.setConfig(
+    document.getElementById("companionEndpoint").value,
+    document.getElementById("companionToken").value);
+  refreshCompanionStatus();
+  if (!companion.isConfigured()) { note.textContent = "Enter endpoint + token first."; return; }
+  note.textContent = "Testing… (a local model can take ~10 s)";
+  const res = await companion.ask("Reply with a 5-word hello.", "");
+  note.textContent = res.ok ? "Connected — the companion answered." : res.text;
 });
 
 document.getElementById("clearStorageBtn").addEventListener("click", () => {
@@ -167,13 +204,49 @@ document.getElementById("clearStorageBtn").addEventListener("click", () => {
 // About
 document.getElementById("aboutBtn").addEventListener("click", () => openSheet("aboutSheet"));
 
-// Companion preview (the ✦ button in the mode bar): proves the getContext() → companion
-// seam end-to-end using the stub.
-document.getElementById("companionBtn").addEventListener("click", async () => {
-  let context = "";
-  try { context = active ? (active.mod.getContext() || "") : ""; } catch (e) { console.error(e); }
-  document.getElementById("companionContext").textContent = context || "(this mode reports nothing right now)";
-  const res = await companion.ask("What am I looking at?", context);
-  document.getElementById("companionReply").textContent = res.text;
+// Companion (the ✦ button in the mode bar): text-first Q&A grounded in the active
+// mode's getContext(). Voice input (Web Speech) is a planned fast-follow.
+function activeContext() {
+  try { return active ? (active.mod.getContext() || "") : ""; } catch (e) { console.error(e); return ""; }
+}
+
+document.getElementById("companionBtn").addEventListener("click", () => {
+  document.getElementById("companionContext").textContent =
+    activeContext() || "(this mode reports nothing right now)";
+  document.getElementById("companionReply").textContent = companion.isConfigured()
+    ? "Ask away — answers come from your own machine."
+    : "Not configured yet — add your bridge's endpoint + token in Settings (on the home screen).";
+  document.getElementById("companionReplyMeta").textContent = "";
   openSheet("companionSheet");
+});
+
+let asking = false;
+async function askCompanion() {
+  if (asking) return;
+  const input = document.getElementById("companionQuestion");
+  const question = input.value.trim();
+  if (!question) return;
+  const reply = document.getElementById("companionReply");
+  const meta = document.getElementById("companionReplyMeta");
+  const context = activeContext(); // re-read at ask time — freshest reading
+  document.getElementById("companionContext").textContent = context || "(this mode reports nothing right now)";
+  asking = true;
+  document.getElementById("companionAskBtn").disabled = true;
+  reply.textContent = "Thinking… (your local model is generating; the first answer can take ~10 s)";
+  meta.textContent = "";
+  try {
+    const res = await companion.ask(question, context);
+    reply.textContent = res.text;
+    meta.textContent = res.ok && res.stats
+      ? `local model · ${res.stats.tokensPerSec ?? "?"} tok/s · ${res.stats.seconds ?? "?"} s`
+      : "";
+    if (res.ok) input.value = "";
+  } finally {
+    asking = false;
+    document.getElementById("companionAskBtn").disabled = false;
+  }
+}
+document.getElementById("companionAskBtn").addEventListener("click", askCompanion);
+document.getElementById("companionQuestion").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); askCompanion(); }
 });

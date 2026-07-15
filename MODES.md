@@ -41,7 +41,7 @@ export default {
 | `ctx.services.sensors` | permission-gated camera / mic / motion / orientation / GPS (iOS gesture handling included) |
 | `ctx.services.overlay` | HUD/canvas helpers (`createCanvas`, `fit2d`, `cssVar`) |
 | `ctx.services.storage` | namespaced local persistence — use `storage.scope(yourId)` |
-| `ctx.services.companion` | the AI companion seam (currently a stub — see `services/companion.js`) |
+| `ctx.services.companion` | the AI companion — `ask(prompt, context)` answers via the user's own local-model bridge if configured in Settings (see `services/companion.js` and `GLASSES.md`) |
 
 Always get sensors through `ctx.services.sensors`, never raw browser APIs: the service
 owns iOS's user-gesture permission dance, fans events out, and lets the shell

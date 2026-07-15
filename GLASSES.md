@@ -9,20 +9,23 @@ below is designed so that when the Brilliant Labs **Halo** arrives, hooking it u
 The Jarvis loop: **wake (tap / wake word) → capture mic + camera frame → send with the
 active mode's `getContext()` to a multimodal model → answer by voice + overlay.**
 
-What exists now:
-- `companion.ask(prompt, context)` — the stable seam every caller already uses. It
-  currently returns a "not configured yet" placeholder; the shell's ✦ button
-  demonstrates the full path (active mode → `getContext()` → companion → reply UI).
+What exists now (**Companion P0 — live**):
+- `companion.ask(prompt, context)` — the stable seam every caller uses. It POSTs to a
+  **personal bridge**: a token-gated, rate-limited proxy in front of a **local model**
+  (Ollama) on the user's own machine, reached over HTTPS via a Cloudflare tunnel.
+  $0, private, nothing leaves the user's hardware. Text-first Q&A via the ✦ sheet.
+- The endpoint URL + token are entered in **Settings → Companion** and stored in
+  the device's localStorage only — **no secrets in this repo, ever**.
 - Every mode implements `getContext()` (enforced by the mode API, see `MODES.md`), so
-  the companion is situation-aware across all modes from day one.
+  answers are grounded in what the user is doing right now.
+- Unconfigured devices get a friendly "not configured" message — the stub behavior.
 
-What wiring it will involve (future handoff):
-- A **tiny server-side proxy** to hold the LLM API key (Cloudflare Workers or similar —
-  the key never ships in the client), or a local agent (OpenClaw) on the mini PC.
-- Voice in/out (Web Speech or streaming), camera frame capture via `services/sensors`.
-- **SAFETY (mandatory):** confirmation gates before any side-effectful action
-  (send / post / delete / pay), scoped permissions, keys handled server-side only.
-  A misheard command must never auto-fire an irreversible action.
+Still future:
+- Voice in/out (Web Speech STT/TTS — the planned fast-follow), camera frame capture
+  via `services/sensors` for vision questions, streaming replies.
+- Tools/actions (email, notes, APIs). **SAFETY (mandatory):** confirmation gates before
+  any side-effectful action (send / post / delete / pay), scoped permissions. A misheard
+  command must never auto-fire an irreversible action. P0 is deliberately Q&A only.
 
 ## Attach point 2 — the glasses adapter (`services/glassesAdapter.js`)
 

@@ -1,33 +1,109 @@
-// Reality Engine · services/companion — the AI companion seam (STUB).
+// Reality Engine · services/companion — the AI companion (Phase 0: local brain, text-first).
 //
-// This is the reserved attach point for the future Jarvis-style companion
-// (see GLASSES.md and the platform brief §3). NOTHING here talks to a model yet:
-// no LLM, no API keys, no backend. Wiring one later (a tiny key-holding proxy, or a
-// local agent like OpenClaw) should only mean replacing the body of `ask()` —
-// every caller already passes the active mode's getContext() string, which is what
-// makes the companion situation-aware across all modes.
+// The companion answers questions grounded in the active mode's getContext() string.
+// It talks to a personal bridge (a token-gated proxy in front of a local model on the
+// user's own machine, reached over HTTPS via a tunnel). NOTHING secret lives in this
+// repo: the endpoint URL + token are entered in Settings → Companion and stored in
+// localStorage on the device only. If unconfigured, ask() returns the stub message.
 //
-// Future contract (kept stable from day one):
-//   ask(prompt, context) → Promise<{ ok, text, source }>
-//     prompt  — what the user said/asked (voice or text)
-//     context — the active mode's getContext() string ("" if no mode is active)
+// Contract (stable since RE0):
+//   ask(prompt, context) → Promise<{ ok, text, source, stats? }>
+//     prompt  — the user's question
+//     context — the active mode's getContext() string ("" if nothing meaningful)
 //
-// SAFETY (mandatory when this is wired): any side-effectful action the companion
-// takes (send / post / delete / pay) must pass a confirmation gate first. A misheard
-// voice command must never auto-fire an irreversible action.
+// SAFETY: Phase 0 is Q&A ONLY — the companion takes no actions. When tools/actions
+// arrive in a later phase, every side-effectful action (send / post / delete / pay)
+// must pass a confirmation gate first.
+//
+// Fast-follow (not required for P0): voice input via the Web Speech API.
+
+import storage from "./storage.js";
+
+const SYSTEM_PROMPT =
+  "You are the Reality Engine companion — a concise assistant living inside an open, " +
+  "phone-first platform of swappable reality modes (astronomy, physics experiments, and more). " +
+  "You may be given a context line describing what the user is doing or seeing right now; " +
+  "ground your answer in it when relevant. Answer in 2–4 short sentences of plain text " +
+  "(no markdown, no code blocks) — the reply may be spoken aloud later. " +
+  "You are Q&A only: you cannot take actions, control devices, or remember past conversations.";
+
+const ASK_TIMEOUT_MS = 120_000; // local CPU inference can be slow, esp. the first answer
 
 export const companion = {
-  isConfigured() { return false; },
+  isConfigured() {
+    return Boolean(storage.get("companion.endpoint") && storage.get("companion.token"));
+  },
+
+  getConfig() {
+    return {
+      endpoint: storage.get("companion.endpoint", ""),
+      token: storage.get("companion.token", ""),
+    };
+  },
+
+  setConfig(endpoint, token) {
+    endpoint = (endpoint || "").trim().replace(/\/+$/, "");
+    token = (token || "").trim();
+    if (endpoint) storage.set("companion.endpoint", endpoint); else storage.remove("companion.endpoint");
+    if (token) storage.set("companion.token", token); else storage.remove("companion.token");
+  },
 
   async ask(prompt, context = "") {
-    return {
-      ok: false,
-      source: "stub",
-      text:
-        "The AI companion isn't configured yet — this seam is reserved for it. " +
-        "When it's wired in, it will answer using what you're doing right now" +
-        (context ? ` (the active mode reports: “${context}”)` : "") + ".",
-    };
+    if (!this.isConfigured()) {
+      return {
+        ok: false,
+        source: "stub",
+        text:
+          "The AI companion isn't configured yet. In Settings → Companion, paste the " +
+          "endpoint URL and token from your bridge (see GLASSES.md / the companion handoff)" +
+          (context ? ` — once connected, it will know what you're doing (right now: “${context}”)` : "") + ".",
+      };
+    }
+
+    const { endpoint, token } = this.getConfig();
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: (context ? `Context — what I'm doing right now: ${context}\n\nQuestion: ` : "") + prompt,
+      },
+    ];
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ASK_TIMEOUT_MS);
+    try {
+      const r = await fetch(endpoint + "/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + token },
+        body: JSON.stringify({ messages }),
+        signal: ctrl.signal,
+      });
+      if (r.status === 401) {
+        return { ok: false, source: "error", text: "The bridge rejected the token — re-check the token in Settings → Companion." };
+      }
+      if (r.status === 429) {
+        return { ok: false, source: "error", text: "Rate limited by the bridge — wait a minute and ask again." };
+      }
+      if (!r.ok) {
+        return { ok: false, source: "error", text: `The bridge answered with an error (${r.status}) — the model backend may be down on the host machine.` };
+      }
+      const data = await r.json();
+      if (!data || typeof data.text !== "string" || !data.text) {
+        return { ok: false, source: "error", text: "The bridge returned an empty answer — try again." };
+      }
+      return { ok: true, source: "local", text: data.text.trim(), stats: data.stats || null };
+    } catch (err) {
+      const timedOut = err && err.name === "AbortError";
+      return {
+        ok: false,
+        source: "error",
+        text: timedOut
+          ? "The companion took too long to answer (over 2 minutes) — the host machine may be overloaded."
+          : "Couldn't reach the companion bridge — is the host machine awake and its tunnel running? If it restarted, the endpoint URL may have changed (Settings → Companion).",
+      };
+    } finally {
+      clearTimeout(timer);
+    }
   },
 };
 

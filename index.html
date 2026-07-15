@@ -167,7 +167,16 @@
   input[type="number"] { appearance: none; -webkit-appearance: none; border: 1px solid var(--line);
     background: var(--panel-solid); color: var(--text); border-radius: 10px; padding: 8px 10px;
     font-size: 15px; font-family: var(--mono); width: 90px; text-align: center; }
-  input[type="number"]:focus { outline: none; border-color: var(--accent); }
+  input[type="url"], input[type="password"], input[type="text"] { appearance: none;
+    -webkit-appearance: none; border: 1px solid var(--line); background: var(--panel-solid);
+    color: var(--text); border-radius: 10px; padding: 9px 12px; font-size: 14px; width: 100%; }
+  input:focus { outline: none; border-color: var(--accent); }
+  .fieldLabel { display: block; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--dim); margin: 10px 0 4px; }
+  .askRow { display: flex; gap: 8px; margin-top: 4px; }
+  .askRow input { flex: 1; min-width: 0; }
+  .replyMeta { margin-top: 8px; font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
+  .saveNote { font-size: 12px; margin-top: 8px; color: var(--good); min-height: 16px; }
 </style>
 </head>
 <body>
@@ -210,7 +219,19 @@
       <section>
         <h3>AI companion</h3>
         <div class="kvRow"><span class="k">Status</span><span class="v" id="companionStatus">—</span></div>
-        <p class="mono">The companion seam is built in; wiring a model (with confirmation gates) is a future step.</p>
+        <p class="mono">Point the companion at your own bridge (a token-gated proxy in front of a local
+          model — see the companion handoff). Both values stay in this device's local storage only.</p>
+        <label class="fieldLabel" for="companionEndpoint">Endpoint URL (https)</label>
+        <input type="url" id="companionEndpoint" placeholder="https://…" autocomplete="off"
+          autocapitalize="off" spellcheck="false">
+        <label class="fieldLabel" for="companionToken">Access token</label>
+        <input type="password" id="companionToken" placeholder="paste token" autocomplete="off">
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="ghostBtn accent" id="companionSaveBtn">Save</button>
+          <button class="ghostBtn" id="companionTestBtn">Test connection</button>
+          <button class="ghostBtn danger" id="companionForgetBtn">Forget</button>
+        </div>
+        <div class="saveNote" id="companionSaveNote"></div>
       </section>
       <section>
         <h3>Stored data</h3>
@@ -249,15 +270,25 @@
   <div class="sheetWrap" id="companionSheet">
     <div class="sheet">
       <h2>✦ Companion</h2>
-      <div class="sub">A preview of the seam the future AI companion plugs into. It reads the active mode's
-        <span class="mono">getContext()</span> so it always knows what you're doing.</div>
+      <div class="sub">Ask your own model anything — it reads the active mode's
+        <span class="mono">getContext()</span>, so it knows what you're doing right now.
+        Q&amp;A only in this phase; answers come from your own machine.</div>
       <section>
         <h3>What the mode reports right now</h3>
         <p id="companionContext" class="mono" style="color:var(--text);">—</p>
       </section>
       <section>
+        <h3>Ask</h3>
+        <div class="askRow">
+          <input type="text" id="companionQuestion" placeholder="e.g. What am I measuring?"
+            autocomplete="off" autocapitalize="sentences" enterkeyhint="send">
+          <button class="ghostBtn accent" id="companionAskBtn">Ask</button>
+        </div>
+      </section>
+      <section>
         <h3>Companion reply</h3>
         <p id="companionReply">—</p>
+        <div class="replyMeta" id="companionReplyMeta"></div>
       </section>
       <button class="ghostBtn sheetClose" data-close="companionSheet">Close</button>
     </div>
