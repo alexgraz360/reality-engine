@@ -92,6 +92,7 @@ async function openMode(entry) {
   modeRoot.innerHTML = "";
   home.style.display = "none";
   modeView.classList.add("open");
+  document.body.classList.add("modeOpen"); // FAB rides above mode bottom panels
   try {
     const mod = (await entry.load()).default;
     active = { mod, entry };
@@ -112,11 +113,12 @@ function closeMode() {
     active = null;
   }
   stopSpeaking();
-  stopDictation();
+  stopDictation(true);
   sensors.releaseAll(); // safety net: no stream/listener survives a mode
   window.__mode = undefined;
   modeRoot.innerHTML = "";
   modeView.classList.remove("open");
+  document.body.classList.remove("modeOpen");
   home.style.display = "";
 }
 
@@ -135,7 +137,7 @@ document.addEventListener("visibilitychange", () => {
 function openSheet(id) { document.getElementById(id).classList.add("open"); }
 function closeSheet(id) {
   document.getElementById(id).classList.remove("open");
-  if (id === "companionSheet") { stopSpeaking(); stopDictation(); } // silence on close
+  if (id === "companionSheet") { stopSpeaking(); stopDictation(true); } // silence on close
 }
 for (const btn of document.querySelectorAll("[data-close]")) {
   btn.addEventListener("click", () => closeSheet(btn.dataset.close));
@@ -209,18 +211,25 @@ document.getElementById("clearStorageBtn").addEventListener("click", () => {
 // About
 document.getElementById("aboutBtn").addEventListener("click", () => openSheet("aboutSheet"));
 
-// Companion (the ✦ button in the mode bar): text-first Q&A grounded in the active
-// mode's getContext(). Voice input (Web Speech) is a planned fast-follow.
+// Companion (the global floating ✦): available on the home screen and in every mode.
+// Grounded when the active mode reports context via getContext(); a general assistant
+// otherwise (the context section hides so we never show a stale/empty line).
 function activeContext() {
   try { return active ? (active.mod.getContext() || "") : ""; } catch (e) { console.error(e); return ""; }
 }
 
-document.getElementById("companionBtn").addEventListener("click", () => {
-  document.getElementById("companionContext").textContent =
-    activeContext() || "(this mode reports nothing right now)";
+function renderCompanionContext() {
+  const context = activeContext();
+  document.getElementById("companionContextSection").style.display = context ? "" : "none";
+  document.getElementById("companionContext").textContent = context;
+  return context;
+}
+
+document.getElementById("companionFab").addEventListener("click", () => {
+  renderCompanionContext();
   document.getElementById("companionReply").textContent = companion.isConfigured()
     ? "Ask away — answers come from your own machine."
-    : "Not configured yet — add your bridge's endpoint + token in Settings (on the home screen).";
+    : "Not configured yet — scan the bridge QR (show-qr.ps1), or add endpoint + token in Settings.";
   document.getElementById("companionReplyMeta").textContent = "";
   openSheet("companionSheet");
 });
@@ -256,30 +265,33 @@ function unlockTTS() {
 }
 
 // ---- voice in (SpeechRecognition; webkitSpeechRecognition on iOS/Safari) ----
+// ONE recognition instance for the whole app. iOS fires benign events constantly
+// (self-aborts, silence, focus loss) and double-starting a recognizer causes instant
+// "aborted" errors — a single lazily-created instance plus an explicit `listening`
+// flag prevents both, and benign errors never surface as banners. If iOS dictation
+// stays flaky in practice, the noted future path is local Whisper speech-to-text on
+// the bridge (not built).
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const micBtn = document.getElementById("companionMicBtn");
 const voiceNote = document.getElementById("companionVoiceNote");
-let recognition = null; // non-null while listening
+let recognition = null;       // the single instance, created on first use
+let listening = false;        // guards start(): double-start = instant "aborted"
+let finalTranscript = "";
+let discardDictation = false; // abort path (close/mode exit): never auto-send
 
 if (!SR) {
   micBtn.classList.add("unsupported"); // typing still works everywhere
   voiceNote.textContent = "Voice input isn't supported in this browser — type your question instead.";
 }
 
-function stopDictation() {
-  if (recognition) { try { recognition.stop(); } catch (e) { /* already stopped */ } }
-}
-
-micBtn.addEventListener("click", () => {
-  if (recognition) { stopDictation(); return; } // tap again = finish early
-  stopSpeaking(); // never listen while talking
+function getRecognition() {
+  if (recognition) return recognition;
   const input = document.getElementById("companionQuestion");
   const rec = new SR();
   rec.lang = navigator.language || "en-US";
   rec.interimResults = true;   // live transcript into the box
   rec.continuous = false;      // one question per tap
   rec.maxAlternatives = 1;
-  let finalTranscript = "";
   rec.onresult = (e) => {
     let interim = "";
     for (const r of e.results) (r.isFinal ? (finalTranscript += r[0].transcript) : (interim += r[0].transcript));
@@ -287,27 +299,66 @@ micBtn.addEventListener("click", () => {
   };
   rec.onerror = (e) => {
     finalTranscript = "";
-    input.value = "";
-    voiceNote.textContent =
-      e.error === "not-allowed" || e.error === "service-not-allowed"
-        ? "Microphone access was denied — allow the mic for this site (iOS: Settings → Safari → Microphone), or just type."
-        : e.error === "no-speech"
-          ? "Didn't catch anything — tap the mic and try again, or type."
-          : `Voice input error (${e.error}) — you can always type instead.`;
+    switch (e.error) {
+      case "aborted":       // benign: self-abort / we cancelled — silent
+        break;
+      case "no-speech":     // benign: quiet hint, no error tone
+        voiceNote.textContent = "Didn't catch that — tap the mic and try again, or type.";
+        break;
+      case "not-allowed":
+      case "service-not-allowed":
+        input.value = "";
+        voiceNote.textContent = "Microphone access was denied — allow the mic for this site (iOS: Settings → Safari → Microphone), or just type.";
+        break;
+      case "audio-capture":
+        input.value = "";
+        voiceNote.textContent = "No microphone was found on this device — type your question instead.";
+        break;
+      case "network":
+        input.value = "";
+        voiceNote.textContent = "The speech service is unreachable right now — type your question instead.";
+        break;
+      default:              // anything exotic: stay quiet, typing always works
+        break;
+    }
   };
   rec.onend = () => {
-    recognition = null;
+    listening = false;
     micBtn.classList.remove("listening");
-    if (input.value.trim() && finalTranscript) askCompanion(); // speak → auto-send
+    const send = !discardDictation && finalTranscript && input.value.trim();
+    discardDictation = false;
+    finalTranscript = "";
+    if (send) askCompanion(); // speak → auto-send
   };
   recognition = rec;
+  return rec;
+}
+
+// stop(discard=false) finalizes (may auto-send); stop(discard=true) throws the
+// in-progress dictation away (sheet close, mode exit, new question).
+function stopDictation(discard = false) {
+  if (!listening || !recognition) return;
+  discardDictation = discard;
+  try { discard ? recognition.abort() : recognition.stop(); } catch (e) { /* already stopped */ }
+}
+
+micBtn.addEventListener("click", () => {
+  if (!SR) return;
+  if (listening) { stopDictation(false); return; } // tap again = finish early
+  stopSpeaking(); // mic and speaker never run together
+  const input = document.getElementById("companionQuestion");
+  const rec = getRecognition();
+  listening = true;
+  finalTranscript = "";
+  discardDictation = false;
   micBtn.classList.add("listening");
   voiceNote.textContent = "Listening… speak your question (tap again to stop).";
   input.value = "";
   try { rec.start(); } catch (err) {
-    recognition = null;
+    // start() throws if the engine is somehow mid-shutdown — reset quietly
+    listening = false;
     micBtn.classList.remove("listening");
-    voiceNote.textContent = "Couldn't start voice input — type your question instead.";
+    voiceNote.textContent = "";
   }
 });
 
@@ -318,13 +369,12 @@ async function askCompanion() {
   const input = document.getElementById("companionQuestion");
   const question = input.value.trim();
   if (!question) return;
-  stopDictation();
-  stopSpeaking();  // a new question interrupts the previous answer
-  unlockTTS();     // gesture-chain unlock so the async reply can be spoken (iOS)
+  stopDictation(true); // question text is already captured — discard the dictation
+  stopSpeaking();      // a new question interrupts the previous answer
+  unlockTTS();         // gesture-chain unlock so the async reply can be spoken (iOS)
   const reply = document.getElementById("companionReply");
   const meta = document.getElementById("companionReplyMeta");
-  const context = activeContext(); // re-read at ask time — freshest reading
-  document.getElementById("companionContext").textContent = context || "(this mode reports nothing right now)";
+  const context = renderCompanionContext(); // re-read at ask time — freshest reading
   asking = true;
   document.getElementById("companionAskBtn").disabled = true;
   reply.textContent = "Thinking… (your local model is generating; the first answer can take ~10 s)";

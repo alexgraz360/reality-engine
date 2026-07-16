@@ -87,10 +87,18 @@
   #modeTag { font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
     padding: 3px 8px; border-radius: 999px; flex-shrink: 0; color: var(--dim);
     border: 1px solid var(--line); }
-  #companionBtn { appearance: none; border: 1px solid var(--line); background: transparent;
-    color: var(--accent); border-radius: 999px; width: 30px; height: 30px; font-size: 14px;
-    cursor: pointer; flex-shrink: 0; }
   #modeRoot { flex: 1; position: relative; overflow: hidden; }
+
+  /* Global companion button — floats everywhere (home + every mode). In a mode it
+     rides above the bottom readout panel modes typically place. */
+  #companionFab { position: fixed; right: 16px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); z-index: 40;
+    width: 52px; height: 52px; border-radius: 50%; border: 1px solid rgba(77, 163, 255, 0.5);
+    background: var(--panel-solid); color: var(--accent); font-size: 22px; cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55), 0 0 18px rgba(77, 163, 255, 0.25);
+    appearance: none; }
+  #companionFab:active { transform: scale(0.94); }
+  body.modeOpen #companionFab { bottom: calc(env(safe-area-inset-bottom, 0px) + 200px); }
 
   /* ================= sheets (settings / about / companion) ================= */
   .sheetWrap { position: fixed; inset: 0; z-index: 50; display: none; align-items: flex-end;
@@ -188,9 +196,11 @@
     animation: micPulse 1.2s infinite; }
   #companionMicBtn.unsupported { display: none; }
   @keyframes micPulse { 50% { box-shadow: 0 0 12px rgba(255, 92, 108, 0.5); } }
-  .toggleRow { display: flex; align-items: center; gap: 8px; margin-top: 12px;
-    font-size: 13px; color: var(--text); cursor: pointer; }
-  .toggleRow input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .speakRow { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    border: 1px solid var(--line); background: var(--panel); border-radius: 12px;
+    padding: 11px 14px; margin-bottom: 14px; font-size: 14px; font-weight: 600;
+    color: var(--text); cursor: pointer; }
+  .speakRow input { accent-color: var(--accent); width: 20px; height: 20px; flex-shrink: 0; }
   .voiceNote { font-size: 11.5px; color: var(--dim); margin-top: 8px; min-height: 15px; }
   .replyMeta { margin-top: 8px; font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
   .saveNote { font-size: 12px; margin-top: 8px; color: var(--good); min-height: 16px; }
@@ -218,7 +228,6 @@
       <button id="backBtn">← Home</button>
       <div id="modeTitle"></div>
       <div id="modeTag"></div>
-      <button id="companionBtn" title="Ask the companion" aria-label="Ask the companion">✦</button>
     </div>
     <div id="modeRoot"></div>
   </div>
@@ -287,26 +296,25 @@
   <div class="sheetWrap" id="companionSheet">
     <div class="sheet">
       <h2>✦ Companion</h2>
-      <div class="sub">Ask your own model anything — it reads the active mode's
-        <span class="mono">getContext()</span>, so it knows what you're doing right now.
-        Q&amp;A only in this phase; answers come from your own machine.</div>
-      <section>
+      <div class="sub">Ask anything — astronomy, physics, the world. Answers come from your own
+        machine, and when a mode is open it also knows what you're doing. Q&amp;A only in this phase.</div>
+      <label class="speakRow">
+        <span>🔊 Speak answers aloud</span>
+        <input type="checkbox" id="companionSpeakToggle">
+      </label>
+      <section id="companionContextSection">
         <h3>What the mode reports right now</h3>
         <p id="companionContext" class="mono" style="color:var(--text);">—</p>
       </section>
       <section>
         <h3>Ask</h3>
         <div class="askRow">
-          <input type="text" id="companionQuestion" placeholder="e.g. What am I measuring?"
+          <input type="text" id="companionQuestion" placeholder="e.g. Why is Mars red?"
             autocomplete="off" autocapitalize="sentences" enterkeyhint="send">
           <button class="ghostBtn" id="companionMicBtn" title="Speak your question"
             aria-label="Speak your question">🎤</button>
           <button class="ghostBtn accent" id="companionAskBtn">Ask</button>
         </div>
-        <label class="toggleRow">
-          <input type="checkbox" id="companionSpeakToggle">
-          <span>Speak answers aloud</span>
-        </label>
         <div class="voiceNote" id="companionVoiceNote"></div>
       </section>
       <section>
@@ -317,6 +325,8 @@
       <button class="ghostBtn sheetClose" data-close="companionSheet">Close</button>
     </div>
   </div>
+
+  <button id="companionFab" title="Ask the companion" aria-label="Ask the companion">✦</button>
 
   <div id="toast" role="status"></div>
 
