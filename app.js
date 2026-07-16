@@ -226,42 +226,129 @@ function renderCompanionContext() {
 }
 
 document.getElementById("companionFab").addEventListener("click", () => {
+  primeTTS(); // unlock speech inside this gesture (once per session)
   renderCompanionContext();
   document.getElementById("companionReply").textContent = companion.isConfigured()
     ? "Ask away — answers come from your own machine."
     : "Not configured yet — scan the bridge QR (show-qr.ps1), or add endpoint + token in Settings.";
   document.getElementById("companionReplyMeta").textContent = "";
   openSheet("companionSheet");
+  // One-tap talk: opening the sheet starts listening (the guard in
+  // startListening makes double-starts impossible). Unsupported → just focus
+  // the typed box; denial surfaces only the existing permission help.
+  if (autoListenToggle.checked) {
+    if (SR) startListening();
+    else document.getElementById("companionQuestion").focus();
+  }
 });
 
 // ---- voice out (speechSynthesis) — opt-in via a persisted toggle ----
+// iOS Safari needs real care here: audio must be primed inside a user gesture
+// (once), getVoices() is empty until `voiceschanged`, cancel() needs a beat
+// before the next speak(), long utterances get truncated, and the whole channel
+// is muted by the hardware silent switch (hence the hint in the sheet — that
+// one can't be fixed in code).
 const speakToggle = document.getElementById("companionSpeakToggle");
 const ttsSupported = "speechSynthesis" in window;
+let ttsUnlocked = false;
+let ttsVoices = [];
+let ttsPreferred = null;
+let pendingSpeak = null;  // answer that arrived before voices loaded — queued, not dropped
+let speakSession = 0;     // bumped on every stop; stale queued speaks abort themselves
+let lastChunkCount = 0;   // verification hook
+
 speakToggle.checked = ttsSupported && Boolean(storage.get("companion.speak", false));
 if (!ttsSupported) speakToggle.disabled = true;
 speakToggle.addEventListener("change", () => {
   storage.set("companion.speak", speakToggle.checked);
-  if (!speakToggle.checked) stopSpeaking();
+  if (speakToggle.checked) primeTTS(); // the change itself is a user gesture
+  else stopSpeaking();
 });
 
-function stopSpeaking() { if (ttsSupported) speechSynthesis.cancel(); }
+function loadVoices() {
+  if (!ttsSupported) return;
+  ttsVoices = speechSynthesis.getVoices();
+  const lang = navigator.language || "en-US";
+  ttsPreferred =
+    ttsVoices.find((v) => v.lang === lang && v.localService) ||
+    ttsVoices.find((v) => v.lang === lang) ||
+    ttsVoices.find((v) => v.lang && v.lang.indexOf("en") === 0 && v.default) ||
+    ttsVoices.find((v) => v.lang && v.lang.indexOf("en") === 0) || null;
+  if (ttsVoices.length && pendingSpeak) {
+    const queued = pendingSpeak;
+    pendingSpeak = null;
+    speakNow(queued);
+  }
+}
+loadVoices();
+if (ttsSupported) speechSynthesis.addEventListener("voiceschanged", loadVoices);
+
+// One-time unlock inside the session's first companion gesture (sheet open,
+// mic tap, Ask, or toggling speak on). Near-silent so it's inaudible.
+function primeTTS() {
+  if (!ttsSupported || ttsUnlocked) return;
+  ttsUnlocked = true;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0.01;
+    speechSynthesis.speak(u);
+  } catch (e) { /* priming must never break the flow */ }
+}
+
+// iOS truncates long utterances — split into sentences, merge to ~200-char chunks.
+function chunkText(text) {
+  const sentences = text.match(/[^.!?…]+[.!?…]+["')\]]*\s*|[^.!?…]+$/g) || [text];
+  const chunks = [];
+  let cur = "";
+  for (const s of sentences) {
+    if (cur && (cur + s).length > 200) { chunks.push(cur.trim()); cur = s; }
+    else cur += s;
+  }
+  if (cur.trim()) chunks.push(cur.trim());
+  return chunks;
+}
+
+function speakNow(text) {
+  const session = ++speakSession;
+  speechSynthesis.cancel();
+  // Give cancel() a beat to fully clear (iOS stalls if speak() follows at once).
+  setTimeout(() => {
+    if (session !== speakSession || !speakToggle.checked) return; // stopped meanwhile
+    if (speechSynthesis.paused) { try { speechSynthesis.resume(); } catch (e) {} }
+    const chunks = chunkText(text);
+    lastChunkCount = chunks.length;
+    chunks.forEach((c, i) => {
+      const u = new SpeechSynthesisUtterance(c);
+      u.lang = navigator.language || "en-US";
+      if (ttsPreferred) u.voice = ttsPreferred;
+      u.onstart = () => console.debug(`tts chunk ${i + 1}/${chunks.length} start`);
+      u.onend = () => console.debug(`tts chunk ${i + 1}/${chunks.length} end`);
+      u.onerror = (e) => console.warn("tts error:", e.error);
+      speechSynthesis.speak(u); // enqueued; the engine plays them in order
+    });
+    if (speechSynthesis.paused) { try { speechSynthesis.resume(); } catch (e) {} }
+  }, 80);
+}
 
 function speakReply(text) {
   if (!ttsSupported || !speakToggle.checked || !text) return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = navigator.language || "en-US";
-  speechSynthesis.speak(u);
+  if (!ttsVoices.length) {
+    // Voices not loaded yet: queue for voiceschanged, with a fallback timer so
+    // engines that can speak without listing voices still get the answer.
+    pendingSpeak = text;
+    setTimeout(() => {
+      if (pendingSpeak === text) { pendingSpeak = null; speakNow(text); }
+    }, 1500);
+    return;
+  }
+  speakNow(text);
 }
 
-// iOS unlocks speechSynthesis only from a user gesture; an empty utterance during the
-// Ask tap lets the real (async) answer speak later.
-function unlockTTS() {
-  if (!ttsSupported || !speakToggle.checked) return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance("");
-  u.volume = 0;
-  speechSynthesis.speak(u);
+function stopSpeaking() {
+  pendingSpeak = null;
+  speakSession++; // aborts any queued/delayed speakNow
+  if (ttsSupported) speechSynthesis.cancel();
 }
 
 // ---- voice in (SpeechRecognition; webkitSpeechRecognition on iOS/Safari) ----
@@ -342,9 +429,10 @@ function stopDictation(discard = false) {
   try { discard ? recognition.abort() : recognition.stop(); } catch (e) { /* already stopped */ }
 }
 
-micBtn.addEventListener("click", () => {
-  if (!SR) return;
-  if (listening) { stopDictation(false); return; } // tap again = finish early
+let recStartCount = 0; // verification hook: how many times rec.start() actually ran
+
+function startListening() {
+  if (!SR || listening) return; // the guard: auto-start + manual tap can never double-start
   stopSpeaking(); // mic and speaker never run together
   const input = document.getElementById("companionQuestion");
   const rec = getRecognition();
@@ -354,13 +442,39 @@ micBtn.addEventListener("click", () => {
   micBtn.classList.add("listening");
   voiceNote.textContent = "Listening… speak your question (tap again to stop).";
   input.value = "";
-  try { rec.start(); } catch (err) {
+  try { rec.start(); recStartCount++; } catch (err) {
     // start() throws if the engine is somehow mid-shutdown — reset quietly
     listening = false;
     micBtn.classList.remove("listening");
     voiceNote.textContent = "";
   }
+}
+
+micBtn.addEventListener("click", () => {
+  if (!SR) return;
+  primeTTS(); // any companion gesture may be the session's first
+  if (listening) { stopDictation(false); return; } // tap again = finish early
+  startListening();
 });
+
+// ---- "Open and listen" (one-tap talk): persisted, default ON ----
+const autoListenToggle = document.getElementById("companionAutoListen");
+autoListenToggle.checked = Boolean(storage.get("companion.autoListen", true));
+if (!SR) autoListenToggle.disabled = true;
+autoListenToggle.addEventListener("change", () => {
+  storage.set("companion.autoListen", autoListenToggle.checked);
+});
+
+// Verification hook (same spirit as the modes' _state()).
+window.RE_voiceDebug = {
+  primed: () => ttsUnlocked,
+  listening: () => listening,
+  startCount: () => recStartCount,
+  pendingSpeak: () => pendingSpeak !== null,
+  lastChunkCount: () => lastChunkCount,
+  chunk: chunkText,
+  startListening: startListening,
+};
 
 // ---- ask flow (typed or dictated) ----
 let asking = false;
@@ -371,7 +485,7 @@ async function askCompanion() {
   if (!question) return;
   stopDictation(true); // question text is already captured — discard the dictation
   stopSpeaking();      // a new question interrupts the previous answer
-  unlockTTS();         // gesture-chain unlock so the async reply can be spoken (iOS)
+  primeTTS();          // in case this Ask is the session's first companion gesture
   const reply = document.getElementById("companionReply");
   const meta = document.getElementById("companionReplyMeta");
   const context = renderCompanionContext(); // re-read at ask time — freshest reading
