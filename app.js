@@ -22,10 +22,10 @@ const REGISTRY = [
     load: () => import("./modes/pendulum.js"),
   },
   {
-    id: "astronomy", title: "Astronomy", family: "Astronomy", icon: "🔭",
+    id: "astronomy", title: "Astronomy", family: "Learn", icon: "🔭",
     permissions: ["camera", "motion", "orientation", "geolocation"],
-    blurb: "Point at the sky — planets, stars, time travel, free flight. Opens the live app.",
-    url: "https://alexgraz360.github.io/astronomy-glasses/phase1/", external: true,
+    blurb: "Point at the sky — planets, stars, time travel, events. Native mode: the ✦ companion knows what you're looking at.",
+    load: () => import("./modes/astronomy.js"),
   },
   {
     id: "physics", title: "Physics experiments", family: "Physics", icon: "⚗️",
