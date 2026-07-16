@@ -111,6 +111,8 @@ function closeMode() {
     try { active.mod.teardown(); } catch (e) { console.error(e); }
     active = null;
   }
+  stopSpeaking();
+  stopDictation();
   sensors.releaseAll(); // safety net: no stream/listener survives a mode
   window.__mode = undefined;
   modeRoot.innerHTML = "";
@@ -131,12 +133,15 @@ document.addEventListener("visibilitychange", () => {
 
 // ---------------------------------------------------------------- sheets
 function openSheet(id) { document.getElementById(id).classList.add("open"); }
-function closeSheet(id) { document.getElementById(id).classList.remove("open"); }
+function closeSheet(id) {
+  document.getElementById(id).classList.remove("open");
+  if (id === "companionSheet") { stopSpeaking(); stopDictation(); } // silence on close
+}
 for (const btn of document.querySelectorAll("[data-close]")) {
   btn.addEventListener("click", () => closeSheet(btn.dataset.close));
 }
 for (const wrap of document.querySelectorAll(".sheetWrap")) {
-  wrap.addEventListener("click", (e) => { if (e.target === wrap) wrap.classList.remove("open"); });
+  wrap.addEventListener("click", (e) => { if (e.target === wrap) closeSheet(wrap.id); });
 }
 
 // Settings
@@ -220,12 +225,102 @@ document.getElementById("companionBtn").addEventListener("click", () => {
   openSheet("companionSheet");
 });
 
+// ---- voice out (speechSynthesis) — opt-in via a persisted toggle ----
+const speakToggle = document.getElementById("companionSpeakToggle");
+const ttsSupported = "speechSynthesis" in window;
+speakToggle.checked = ttsSupported && Boolean(storage.get("companion.speak", false));
+if (!ttsSupported) speakToggle.disabled = true;
+speakToggle.addEventListener("change", () => {
+  storage.set("companion.speak", speakToggle.checked);
+  if (!speakToggle.checked) stopSpeaking();
+});
+
+function stopSpeaking() { if (ttsSupported) speechSynthesis.cancel(); }
+
+function speakReply(text) {
+  if (!ttsSupported || !speakToggle.checked || !text) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = navigator.language || "en-US";
+  speechSynthesis.speak(u);
+}
+
+// iOS unlocks speechSynthesis only from a user gesture; an empty utterance during the
+// Ask tap lets the real (async) answer speak later.
+function unlockTTS() {
+  if (!ttsSupported || !speakToggle.checked) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance("");
+  u.volume = 0;
+  speechSynthesis.speak(u);
+}
+
+// ---- voice in (SpeechRecognition; webkitSpeechRecognition on iOS/Safari) ----
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = document.getElementById("companionMicBtn");
+const voiceNote = document.getElementById("companionVoiceNote");
+let recognition = null; // non-null while listening
+
+if (!SR) {
+  micBtn.classList.add("unsupported"); // typing still works everywhere
+  voiceNote.textContent = "Voice input isn't supported in this browser — type your question instead.";
+}
+
+function stopDictation() {
+  if (recognition) { try { recognition.stop(); } catch (e) { /* already stopped */ } }
+}
+
+micBtn.addEventListener("click", () => {
+  if (recognition) { stopDictation(); return; } // tap again = finish early
+  stopSpeaking(); // never listen while talking
+  const input = document.getElementById("companionQuestion");
+  const rec = new SR();
+  rec.lang = navigator.language || "en-US";
+  rec.interimResults = true;   // live transcript into the box
+  rec.continuous = false;      // one question per tap
+  rec.maxAlternatives = 1;
+  let finalTranscript = "";
+  rec.onresult = (e) => {
+    let interim = "";
+    for (const r of e.results) (r.isFinal ? (finalTranscript += r[0].transcript) : (interim += r[0].transcript));
+    input.value = (finalTranscript + interim).trim();
+  };
+  rec.onerror = (e) => {
+    finalTranscript = "";
+    input.value = "";
+    voiceNote.textContent =
+      e.error === "not-allowed" || e.error === "service-not-allowed"
+        ? "Microphone access was denied — allow the mic for this site (iOS: Settings → Safari → Microphone), or just type."
+        : e.error === "no-speech"
+          ? "Didn't catch anything — tap the mic and try again, or type."
+          : `Voice input error (${e.error}) — you can always type instead.`;
+  };
+  rec.onend = () => {
+    recognition = null;
+    micBtn.classList.remove("listening");
+    if (input.value.trim() && finalTranscript) askCompanion(); // speak → auto-send
+  };
+  recognition = rec;
+  micBtn.classList.add("listening");
+  voiceNote.textContent = "Listening… speak your question (tap again to stop).";
+  input.value = "";
+  try { rec.start(); } catch (err) {
+    recognition = null;
+    micBtn.classList.remove("listening");
+    voiceNote.textContent = "Couldn't start voice input — type your question instead.";
+  }
+});
+
+// ---- ask flow (typed or dictated) ----
 let asking = false;
 async function askCompanion() {
   if (asking) return;
   const input = document.getElementById("companionQuestion");
   const question = input.value.trim();
   if (!question) return;
+  stopDictation();
+  stopSpeaking();  // a new question interrupts the previous answer
+  unlockTTS();     // gesture-chain unlock so the async reply can be spoken (iOS)
   const reply = document.getElementById("companionReply");
   const meta = document.getElementById("companionReplyMeta");
   const context = activeContext(); // re-read at ask time — freshest reading
@@ -234,13 +329,17 @@ async function askCompanion() {
   document.getElementById("companionAskBtn").disabled = true;
   reply.textContent = "Thinking… (your local model is generating; the first answer can take ~10 s)";
   meta.textContent = "";
+  voiceNote.textContent = SR ? "" : voiceNote.textContent;
   try {
     const res = await companion.ask(question, context);
     reply.textContent = res.text;
     meta.textContent = res.ok && res.stats
       ? `local model · ${res.stats.tokensPerSec ?? "?"} tok/s · ${res.stats.seconds ?? "?"} s`
       : "";
-    if (res.ok) input.value = "";
+    if (res.ok) {
+      input.value = "";
+      speakReply(res.text);
+    }
   } finally {
     asking = false;
     document.getElementById("companionAskBtn").disabled = false;
