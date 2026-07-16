@@ -349,3 +349,36 @@ document.getElementById("companionAskBtn").addEventListener("click", askCompanio
 document.getElementById("companionQuestion").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); askCompanion(); }
 });
+
+// ---------------------------------------------------------------- config deep-link
+let toastTimer = 0;
+function showToast(text) {
+  const el = document.getElementById("toast");
+  el.textContent = text;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 3500);
+}
+
+// #c=<base64url(JSON {"e":endpoint,"t":token})> — generated on the bridge machine
+// (show-qr.ps1) and delivered by QR scan, so the phone never types a token. Saved
+// through the same path Settings uses (setConfig scrubs whitespace/invisibles); the
+// hash is stripped immediately so the secret never lingers in the URL bar or history.
+(function importConfigFromHash() {
+  const m = (location.hash || "").match(/[#&]c=([A-Za-z0-9_-]+=*)/);
+  if (!m) return;
+  try {
+    const b64 = m[1].replace(/-/g, "+").replace(/_/g, "/");
+    const cfg = JSON.parse(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)));
+    if (!cfg || typeof cfg.e !== "string" || typeof cfg.t !== "string") throw new Error("bad payload");
+    companion.setConfig(cfg.e, cfg.t);
+    showToast(companion.isConfigured()
+      ? "✓ Companion configured — ask away"
+      : "Companion config link was incomplete");
+  } catch (err) {
+    console.error("companion config import failed:", err);
+    showToast("Couldn't read the companion config link");
+  } finally {
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+})();

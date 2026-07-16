@@ -29,6 +29,19 @@ const SYSTEM_PROMPT =
 
 const ASK_TIMEOUT_MS = 120_000; // local CPU inference can be slow, esp. the first answer
 
+// Copy/paste (especially on iOS) can smuggle in spaces, newlines, and even invisible
+// characters (zero-width space, BOM, NBSP) that .trim() alone won't remove — any of
+// which makes the bridge reject the token. Scrub aggressively: neither a bearer token
+// nor a URL legitimately contains whitespace of any kind.
+function scrub(value) {
+  // \u200B-\u200D zero-width chars, \u2060 word joiner, \uFEFF BOM;
+  // \s covers the rest (incl. NBSP).
+  return (value || "").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").replace(/\s+/g, "");
+}
+function scrubEndpoint(value) {
+  return scrub(value).replace(/\/+$/, ""); // also drop trailing slash(es)
+}
+
 export const companion = {
   isConfigured() {
     return Boolean(storage.get("companion.endpoint") && storage.get("companion.token"));
@@ -42,8 +55,8 @@ export const companion = {
   },
 
   setConfig(endpoint, token) {
-    endpoint = (endpoint || "").trim().replace(/\/+$/, "");
-    token = (token || "").trim();
+    endpoint = scrubEndpoint(endpoint);
+    token = scrub(token);
     if (endpoint) storage.set("companion.endpoint", endpoint); else storage.remove("companion.endpoint");
     if (token) storage.set("companion.token", token); else storage.remove("companion.token");
   },
@@ -60,7 +73,11 @@ export const companion = {
       };
     }
 
-    const { endpoint, token } = this.getConfig();
+    // Scrub on send too — belt-and-braces for configs saved before this fix
+    // (or written to localStorage by any other path).
+    const cfg = this.getConfig();
+    const endpoint = scrubEndpoint(cfg.endpoint);
+    const token = scrub(cfg.token);
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
       {

@@ -1,0 +1,4 @@
+# Secrets & bridge artifacts must never land in this public repo.
+.env
+companion-qr.png
+node_modules/
