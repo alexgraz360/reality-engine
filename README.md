@@ -4,6 +4,9 @@
 sensors you carry. Phone-first now, glasses-ready (Brilliant Labs Halo) by design.
 Fully open source, no build step, no frameworks, no CDN, no secrets.
 
+**Start here → [VISION.md](VISION.md)** — the platform's compass: what belongs, what
+doesn't, and the reusable cognitive pipelines every mode is built from.
+
 **Live:** https://alexgraz360.github.io/reality-engine/
 
 ## What it is
