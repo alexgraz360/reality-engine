@@ -173,6 +173,7 @@ document.getElementById("companionSaveBtn").addEventListener("click", () => {
   companion.setConfig(
     document.getElementById("companionEndpoint").value,
     document.getElementById("companionToken").value);
+  voicesFetched = false; // new bridge → re-fetch its voice list on next open
   refreshCompanionStatus();
   document.getElementById("companionSaveNote").textContent =
     companion.isConfigured() ? "Saved on this device." : "Cleared — both fields are needed.";
@@ -292,6 +293,7 @@ function openCard(withAutoListen) {
   card.style.display = "flex";
   cardState = "open";
   unreadReply = false;
+  refreshVoicePicker(); // populate Piper voices (async, once per config)
   refreshFabStatus();
   renderTranscript(uiStatus === "thinking");
   document.getElementById("ccStatus").textContent = statusLabel();
@@ -354,6 +356,107 @@ speakToggle.addEventListener("change", () => {
   else stopSpeaking();
 });
 
+// ---- voice picker: local Piper voices (via the bridge /tts) + system fallback ----
+const voiceSel = document.getElementById("companionVoiceSel");
+const rateSel = document.getElementById("companionRateSel");
+let piperVoices = [];
+let voicesFetched = false;   // reset when the bridge config changes
+let piperNoteShown = false;  // quiet one-time "Piper unavailable" note
+let audioUnlocked = false;
+const piperAudio = new Audio(); // ONE element: unlocked once on a gesture, reused per chunk
+
+// Apply the persisted choice immediately (before the picker is populated), so
+// an ask that happens before the card ever opens still uses the saved voice.
+const savedVoiceId = String(storage.get("companion.voiceId", "system"));
+if (savedVoiceId !== "system") {
+  const placeholder = document.createElement("option");
+  placeholder.value = savedVoiceId;
+  placeholder.textContent = savedVoiceId; // replaced with the proper label on first fetch
+  voiceSel.appendChild(placeholder);
+}
+voiceSel.value = savedVoiceId;
+rateSel.value = String(storage.get("companion.rate", "1"));
+voiceSel.addEventListener("change", () => storage.set("companion.voiceId", voiceSel.value));
+rateSel.addEventListener("change", () => storage.set("companion.rate", rateSel.value));
+function currentRate() { return parseFloat(storage.get("companion.rate", "1")) || 1; }
+
+async function refreshVoicePicker() {
+  if (voicesFetched || !companion.isConfigured()) return;
+  voicesFetched = true;
+  piperVoices = await companion.getVoices(); // [] on any failure
+  const saved = String(storage.get("companion.voiceId", "system"));
+  voiceSel.innerHTML = "";
+  const sys = document.createElement("option");
+  sys.value = "system";
+  sys.textContent = "System voice";
+  voiceSel.appendChild(sys);
+  piperVoices.forEach((v) => {
+    const o = document.createElement("option");
+    o.value = v.id;
+    o.textContent = v.label;
+    voiceSel.appendChild(o);
+  });
+  voiceSel.value = (saved === "system" || piperVoices.some((v) => v.id === saved)) ? saved : "system";
+}
+
+// iOS allows programmatic .play() only on an element that was activated inside
+// a user gesture — same rule as speechSynthesis. Prime it once with silence.
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  try {
+    piperAudio.muted = true;
+    piperAudio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=";
+    const p = piperAudio.play();
+    if (p && p.catch) p.catch(() => {});
+    setTimeout(() => { try { piperAudio.pause(); piperAudio.muted = false; } catch (e) {} }, 60);
+  } catch (e) { /* unlock must never break the flow */ }
+}
+
+// Piper playback: synthesize the same sentence-chunks via the bridge and play
+// them in order through the unlocked element. Chunks are fetched eagerly (the
+// proxy serializes synthesis) so playback stays gapless. ANY failure — fetch,
+// decode, blocked play() — falls back to speechSynthesis for the REMAINDER of
+// the answer: never dead air. onDone fires after the final audio ends, which
+// is what drives the conversation-mode relisten.
+function speakNowPiper(text, onDone) {
+  const session = ++speakSession;
+  if (ttsSupported) { try { speechSynthesis.cancel(); } catch (e) {} }
+  const voiceId = voiceSel.value;
+  const rate = currentRate();
+  const chunks = chunkText(text);
+  lastChunkCount = chunks.length;
+  const blobs = new Array(chunks.length); // undefined = fetching, null = failed
+  let idx = 0;
+  const fallback = () => {
+    if (session !== speakSession) return;
+    if (!piperNoteShown) {
+      piperNoteShown = true;
+      voiceNote.textContent = "Piper voice unavailable — using the system voice.";
+    }
+    if (!ttsSupported) { if (onDone) onDone(); return; } // no system voice either: end cleanly
+    speakNow(chunks.slice(idx).join(" "), onDone); // bumps the session itself
+  };
+  const playNext = () => {
+    if (session !== speakSession) return;
+    if (idx >= chunks.length) { if (onDone) onDone(); return; }
+    const b = blobs[idx];
+    if (b === undefined) { setTimeout(playNext, 120); return; } // still synthesizing
+    if (b === null) { fallback(); return; }
+    const url = URL.createObjectURL(b);
+    piperAudio.onended = () => { URL.revokeObjectURL(url); idx++; playNext(); };
+    piperAudio.onerror = () => { URL.revokeObjectURL(url); fallback(); };
+    piperAudio.src = url;
+    const p = piperAudio.play();
+    if (p && p.catch) p.catch(() => fallback());
+  };
+  chunks.forEach((c, i) => {
+    companion.tts(c, voiceId, rate)
+      .then((blob) => { blobs[i] = blob; if (i === 0) playNext(); })
+      .catch(() => { blobs[i] = null; if (i === 0) playNext(); });
+  });
+}
+
 function loadVoices() {
   if (!ttsSupported) return;
   ttsVoices = speechSynthesis.getVoices();
@@ -375,6 +478,7 @@ if (ttsSupported) speechSynthesis.addEventListener("voiceschanged", loadVoices);
 // One-time unlock inside the session's first companion gesture (sheet open,
 // mic tap, Ask, or toggling speak on). Near-silent so it's inaudible.
 function primeTTS() {
+  unlockAudio(); // HTMLAudio unlock for the Piper path (its own once-flag)
   if (!ttsSupported || ttsUnlocked) return;
   ttsUnlocked = true;
   try {
@@ -416,6 +520,7 @@ function speakNow(text, onDone) {
     chunks.forEach((c, i) => {
       const u = new SpeechSynthesisUtterance(c);
       u.lang = navigator.language || "en-US";
+      u.rate = currentRate();
       if (ttsPreferred) u.voice = ttsPreferred;
       u.onstart = () => console.debug(`tts chunk ${i + 1}/${chunks.length} start`);
       u.onend = () => { console.debug(`tts chunk ${i + 1}/${chunks.length} end`); chunkDone(); };
@@ -427,7 +532,14 @@ function speakNow(text, onDone) {
 }
 
 function speakReply(text, onDone) {
-  if (!ttsSupported || !speakToggle.checked || !text) return false;
+  if (!speakToggle.checked || !text) return false;
+  // A selected Piper voice routes through the bridge; anything else (or an
+  // unconfigured bridge) uses the system speechSynthesis path below.
+  if (voiceSel.value !== "system" && companion.isConfigured()) {
+    speakNowPiper(text, onDone);
+    return true;
+  }
+  if (!ttsSupported) return false;
   if (!ttsVoices.length) {
     // Voices not loaded yet: queue for voiceschanged, with a fallback timer so
     // engines that can speak without listing voices still get the answer.
@@ -444,7 +556,13 @@ function speakReply(text, onDone) {
 
 function stopSpeaking() {
   pendingSpeak = null;
-  speakSession++; // aborts any queued/delayed speakNow
+  speakSession++; // aborts any queued/delayed speakNow AND stale Piper pipelines
+  try {
+    piperAudio.pause();
+    piperAudio.onended = null;
+    piperAudio.onerror = null;
+    piperAudio.removeAttribute("src");
+  } catch (e) { /* flushing must never throw */ }
   if (ttsSupported) speechSynthesis.cancel();
 }
 
@@ -647,6 +765,12 @@ window.RE_voiceDebug = {
   // onerror/onend without a live microphone.
   _setRecognitionForTest: (fake) => { recognition = fake; wireRecognition(fake); return fake; },
   _recognition: () => recognition,
+  // Piper path introspection
+  piperAudio: () => piperAudio,
+  audioUnlocked: () => audioUnlocked,
+  piperVoices: () => piperVoices,
+  selectedVoice: () => voiceSel.value,
+  speakReply: speakReply,
 };
 
 // ---- ask flow (typed or dictated), multi-turn ----

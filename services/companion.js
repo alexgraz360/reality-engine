@@ -62,6 +62,48 @@ export const companion = {
     if (token) storage.set("companion.token", token); else storage.remove("companion.token");
   },
 
+  // ---- local Piper voices (bridge /tts) ----
+  // Available voices for the picker; [] when unconfigured/unreachable/none.
+  async getVoices() {
+    if (!this.isConfigured()) return [];
+    const cfg = this.getConfig();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15_000);
+    try {
+      const r = await fetch(scrubEndpoint(cfg.endpoint) + "/tts/voices", {
+        headers: { authorization: "Bearer " + scrub(cfg.token) },
+        signal: ctrl.signal,
+      });
+      if (!r.ok) return [];
+      const data = await r.json();
+      return Array.isArray(data.voices) ? data.voices : [];
+    } catch (err) {
+      return [];
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  // Synthesize one chunk with a Piper voice; resolves to an audio Blob.
+  // Throws on any failure — the caller falls back to speechSynthesis.
+  async tts(text, voiceId, rate = 1) {
+    const cfg = this.getConfig();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 45_000);
+    try {
+      const r = await fetch(scrubEndpoint(cfg.endpoint) + "/tts", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + scrub(cfg.token) },
+        body: JSON.stringify({ text, voiceId, rate }),
+        signal: ctrl.signal,
+      });
+      if (!r.ok) throw new Error("tts " + r.status);
+      return await r.blob();
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
   // history: optional prior turns [{role:'user'|'assistant', content}] — the
   // caller keeps the rolling window; we defensively re-cap it here so the
   // request always fits the bridge's message-count/size limits.
