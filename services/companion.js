@@ -104,6 +104,44 @@ export const companion = {
     }
   },
 
+  // ---- on-demand vision (bridge /vision) ----
+  // ONE downscaled frame, sent ONLY to the user's own bridge. CPU vision is
+  // slow (seconds to tens of seconds) — generous timeout, graceful errors.
+  async vision(imageBase64, prompt) {
+    if (!this.isConfigured()) {
+      return { ok: false, text: "The companion isn't configured yet — add your bridge in Settings first." };
+    }
+    const cfg = this.getConfig();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 120_000);
+    try {
+      const r = await fetch(scrubEndpoint(cfg.endpoint) + "/vision", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + scrub(cfg.token) },
+        body: JSON.stringify({ imageBase64, prompt }),
+        signal: ctrl.signal,
+      });
+      if (r.status === 401) return { ok: false, text: "The bridge rejected the token — re-check Settings → Companion." };
+      if (r.status === 429) return { ok: false, text: "Vision is rate limited (it's heavy) — wait a minute and try again." };
+      if (r.status === 400) return { ok: false, text: "The bridge refused the image — it may be too large. Try again." };
+      if (!r.ok) return { ok: false, text: "The vision model isn't available on the bridge right now." };
+      const data = await r.json();
+      if (!data || typeof data.text !== "string" || !data.text) {
+        return { ok: false, text: "The vision model returned an empty answer — try again." };
+      }
+      return { ok: true, text: data.text, stats: data.stats || null };
+    } catch (err) {
+      return {
+        ok: false,
+        text: err && err.name === "AbortError"
+          ? "Vision took too long (over 2 minutes) — the box may be busy; try again."
+          : "Couldn't reach the bridge for vision — is the host machine awake?",
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
   // history: optional prior turns [{role:'user'|'assistant', content}] — the
   // caller keeps the rolling window; we defensively re-cap it here so the
   // request always fits the bridge's message-count/size limits.

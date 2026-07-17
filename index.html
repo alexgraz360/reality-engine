@@ -355,10 +355,13 @@
     <div class="askRow">
       <input type="text" id="companionQuestion" placeholder="Ask anything…"
         autocomplete="off" autocapitalize="sentences" enterkeyhint="send">
+      <button class="ghostBtn" id="companionLookBtn" title="Look through the camera (image stays on your bridge)"
+        aria-label="Look through the camera">👁</button>
       <button class="ghostBtn" id="companionMicBtn" title="Speak your question"
         aria-label="Speak your question">🎤</button>
       <button class="ghostBtn accent" id="companionAskBtn">Ask</button>
     </div>
+    <input type="file" id="companionLookInput" accept="image/*" capture="environment" style="display:none;">
     <div class="voiceNote" id="companionVoiceNote"></div>
     <div id="ccToggles">
       <label class="ccTog" title="Read answers aloud"><input type="checkbox" id="companionSpeakToggle"><span>🔊 Speak</span></label>

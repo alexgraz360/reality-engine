@@ -227,6 +227,7 @@ const HISTORY_KEPT = 12;   // messages retained in the UI/memory
 
 function statusLabel() {
   return uiStatus === "thinking" ? "thinking…"
+    : uiStatus === "looking" ? "looking…"
     : uiStatus === "speaking" ? "speaking…"
     : uiStatus === "listening" ? "listening…" : "";
 }
@@ -732,7 +733,7 @@ convoToggle.addEventListener("change", () => {
 function maybeRelisten() {
   if (!convoToggle.checked || !speakToggle.checked) return;
   if (cardState === "closed") return; // collapsed keeps looping; closed stops
-  if (!SR || micDenied || listening || asking) return;
+  if (!SR || micDenied || listening || asking || looking) return;
   convoArmed = true;
   startListening();
 }
@@ -771,12 +772,16 @@ window.RE_voiceDebug = {
   piperVoices: () => piperVoices,
   selectedVoice: () => voiceSel.value,
   speakReply: speakReply,
+  // vision
+  visionAsk: (b64, q) => visionAsk(b64, q),
+  looking: () => looking,
+  frameToJpegBase64: frameToJpegBase64,
 };
 
 // ---- ask flow (typed or dictated), multi-turn ----
 let asking = false;
 async function askCompanion() {
-  if (asking) return;
+  if (asking || looking) return;
   const input = document.getElementById("companionQuestion");
   const question = input.value.trim();
   if (!question) return;
@@ -824,6 +829,107 @@ async function askCompanion() {
 document.getElementById("companionAskBtn").addEventListener("click", askCompanion);
 document.getElementById("companionQuestion").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); askCompanion(); }
+});
+
+// ---- "look": ONE camera frame → the local vision model on the bridge ----
+// On-demand only, user-initiated, never a stream. The downscaled frame is sent
+// ONLY to the configured bridge (companion.vision → <endpoint>/vision).
+const lookBtn = document.getElementById("companionLookBtn");
+const lookInput = document.getElementById("companionLookInput");
+let looking = false;
+
+function findLiveVideo() {
+  // A native mode's own <video>, or — same-origin embeds like astronomy — one
+  // inside its iframe. Cross-origin iframes throw → photo picker instead.
+  const direct = document.querySelector("#modeRoot video");
+  if (direct && direct.readyState >= 2 && direct.videoWidth > 0) return direct;
+  const iframe = document.querySelector("#modeRoot iframe");
+  if (iframe) {
+    try {
+      const v = iframe.contentDocument && iframe.contentDocument.querySelector("video");
+      if (v && v.readyState >= 2 && v.videoWidth > 0) return v;
+    } catch (e) { /* cross-origin */ }
+  }
+  return null;
+}
+
+function frameToJpegBase64(source, w, h) {
+  const MAX = 768; // longest side — plenty for a small vision model, kind to CPU
+  const scale = Math.min(1, MAX / Math.max(w, h));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
+  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.7).split(",")[1];
+}
+
+async function visionAsk(imageBase64, question) {
+  if (looking || asking) return;
+  looking = true;
+  stopDictation(true);
+  stopSpeaking();
+  primeTTS();
+  const context = activeContext();
+  const prompt = (context ? `Context: ${context}\n` : "") + (question || "What is this? Answer briefly.");
+  setStatus("looking");
+  renderTranscript(false);
+  transcriptNote("👁 looking… (local vision model — the image goes only to your bridge; this can take a while)");
+  document.getElementById("companionQuestion").value = "";
+  try {
+    const res = await companion.vision(imageBase64, prompt);
+    if (res.ok) {
+      convo.push(
+        { role: "user", content: "[Looking through the camera] " + (question || "What is this?") },
+        { role: "assistant", content: res.text,
+          meta: res.stats ? `local vision · ${res.stats.seconds ?? "?"} s` : "" });
+      if (convo.length > HISTORY_KEPT) convo = convo.slice(-HISTORY_KEPT);
+      renderTranscript(false);
+      if (cardState === "collapsed") unreadReply = true;
+      const willSpeak = speakReply(res.text, () => {
+        setStatus("idle");
+        maybeRelisten(); // vision answers join the hands-free loop too
+      });
+      setStatus(willSpeak ? "speaking" : "idle");
+    } else {
+      renderTranscript(false);
+      transcriptNote(res.text);
+      setStatus("idle");
+    }
+  } finally {
+    looking = false;
+    refreshFabStatus();
+  }
+}
+
+lookBtn.addEventListener("click", () => {
+  primeTTS();
+  if (looking || asking) return;
+  const question = document.getElementById("companionQuestion").value.trim();
+  const video = findLiveVideo();
+  if (video) {
+    visionAsk(frameToJpegBase64(video, video.videoWidth, video.videoHeight), question);
+  } else {
+    lookInput.dataset.q = question;
+    lookInput.value = ""; // allow re-taking the same photo
+    lookInput.click();    // iOS opens the camera and returns ONE photo
+  }
+});
+
+lookInput.addEventListener("change", () => {
+  const file = lookInput.files && lookInput.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const b64 = frameToJpegBase64(img, img.naturalWidth, img.naturalHeight);
+    URL.revokeObjectURL(url);
+    visionAsk(b64, lookInput.dataset.q || "");
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    transcriptNote("Couldn't read that photo — try again.");
+  };
+  img.src = url;
 });
 
 // ---------------------------------------------------------------- config deep-link
