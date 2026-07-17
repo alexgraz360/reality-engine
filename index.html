@@ -197,12 +197,51 @@
     animation: micPulse 1.2s infinite; }
   #companionMicBtn.unsupported { display: none; }
   @keyframes micPulse { 50% { box-shadow: 0 0 12px rgba(255, 92, 108, 0.5); } }
-  .speakRow { display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    border: 1px solid var(--line); background: var(--panel); border-radius: 12px;
-    padding: 11px 14px; margin-bottom: 14px; font-size: 14px; font-weight: 600;
-    color: var(--text); cursor: pointer; }
-  .speakRow input { accent-color: var(--accent); width: 20px; height: 20px; flex-shrink: 0; }
-  .switchHint { font-size: 10.5px; color: var(--dim); margin: -9px 2px 12px; }
+  /* Companion card: compact, non-modal, docked above the ✦ FAB. No backdrop —
+     only the card itself is interactive; the app underneath stays usable. */
+  #companionCard { position: fixed; right: 12px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 78px);
+    width: min(370px, calc(100vw - 24px)); z-index: 45;
+    background: var(--panel-solid); border: 1px solid var(--line); border-radius: 16px;
+    padding: 10px 12px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+    display: flex; flex-direction: column; gap: 8px; }
+  body.modeOpen #companionCard { bottom: calc(env(safe-area-inset-bottom, 0px) + 262px); }
+  #ccHead { display: flex; align-items: center; gap: 8px; }
+  #ccTitle { font-weight: 700; font-size: 14px; color: var(--accent); }
+  #ccStatus { font-size: 11px; color: var(--warn); font-family: var(--mono); }
+  .ccBtn { appearance: none; border: 1px solid var(--line); background: transparent;
+    color: var(--dim); border-radius: 8px; width: 26px; height: 26px; font-size: 12px;
+    cursor: pointer; flex-shrink: 0; }
+  #ccTranscript { max-height: 34vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    display: flex; flex-direction: column; gap: 6px; padding: 2px 0; }
+  .ccMsg { font-size: 12.5px; line-height: 1.45; border-radius: 10px; padding: 7px 10px;
+    max-width: 92%; overflow-wrap: break-word; }
+  .ccMsg.user { align-self: flex-end; background: rgba(77, 163, 255, 0.14);
+    border: 1px solid rgba(77, 163, 255, 0.3); color: var(--text); }
+  .ccMsg.ai { align-self: flex-start; background: var(--panel); border: 1px solid var(--line);
+    color: var(--text); }
+  .ccMsg.sys { align-self: center; color: var(--dim); font-size: 11px; background: none;
+    border: none; padding: 2px; text-align: center; }
+  .ccMeta { font-size: 9.5px; color: var(--dim); font-family: var(--mono); margin-top: 4px; }
+  .ccHint { color: var(--dim); font-size: 11.5px; line-height: 1.5; padding: 2px; }
+  #ccToggles { display: flex; gap: 6px; }
+  .ccTog { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+    border: 1px solid var(--line); background: var(--panel); border-radius: 9px;
+    padding: 6px 4px; font-size: 10.5px; font-weight: 600; color: var(--text);
+    cursor: pointer; white-space: nowrap; min-width: 0; }
+  .ccTog input { accent-color: var(--accent); width: 14px; height: 14px; flex-shrink: 0; }
+  .switchHint { font-size: 10.5px; color: var(--dim); margin: 0 2px; }
+
+  /* Collapsed status pill next to the FAB (thinking… / speaking… / new reply) */
+  #fabStatus { position: fixed; right: 74px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 30px); z-index: 41;
+    background: var(--panel-solid); border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 11px; font-size: 11px; font-family: var(--mono); color: var(--text);
+    pointer-events: none; white-space: nowrap; }
+  body.modeOpen #fabStatus { bottom: calc(env(safe-area-inset-bottom, 0px) + 214px); }
+  #fabStatus .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    margin-right: 6px; background: var(--warn); animation: pulse 1.1s infinite; }
+  #fabStatus.newreply .dot { background: var(--good); animation: none; }
   .voiceNote { font-size: 11.5px; color: var(--dim); margin-top: 8px; min-height: 15px; }
   .replyMeta { margin-top: 8px; font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
   .saveNote { font-size: 12px; margin-top: 8px; color: var(--good); min-height: 16px; }
@@ -295,43 +334,34 @@
     </div>
   </div>
 
-  <div class="sheetWrap" id="companionSheet">
-    <div class="sheet">
-      <h2>✦ Companion</h2>
-      <div class="sub">Ask anything — astronomy, physics, the world. Answers come from your own
-        machine, and when a mode is open it also knows what you're doing. Q&amp;A only in this phase.</div>
-      <label class="speakRow">
-        <span>🔊 Speak answers aloud</span>
-        <input type="checkbox" id="companionSpeakToggle">
-      </label>
-      <div class="switchHint">No sound? Check the side silent switch.</div>
-      <label class="speakRow">
-        <span>🎤 Open and listen</span>
-        <input type="checkbox" id="companionAutoListen">
-      </label>
-      <section id="companionContextSection">
-        <h3>What the mode reports right now</h3>
-        <p id="companionContext" class="mono" style="color:var(--text);">—</p>
-      </section>
-      <section>
-        <h3>Ask</h3>
-        <div class="askRow">
-          <input type="text" id="companionQuestion" placeholder="e.g. Why is Mars red?"
-            autocomplete="off" autocapitalize="sentences" enterkeyhint="send">
-          <button class="ghostBtn" id="companionMicBtn" title="Speak your question"
-            aria-label="Speak your question">🎤</button>
-          <button class="ghostBtn accent" id="companionAskBtn">Ask</button>
-        </div>
-        <div class="voiceNote" id="companionVoiceNote"></div>
-      </section>
-      <section>
-        <h3>Companion reply</h3>
-        <p id="companionReply">—</p>
-        <div class="replyMeta" id="companionReplyMeta"></div>
-      </section>
-      <button class="ghostBtn sheetClose" data-close="companionSheet">Close</button>
+  <!-- Companion card: NON-MODAL — no backdrop, no scroll-lock; everything
+       outside the card passes through to the app / active mode. -->
+  <div id="companionCard" style="display:none;">
+    <div id="ccHead">
+      <span id="ccTitle">✦ Companion</span>
+      <span id="ccStatus"></span>
+      <span style="flex:1"></span>
+      <button class="ccBtn" id="ccNewBtn" title="New conversation" aria-label="New conversation">↺</button>
+      <button class="ccBtn" id="ccCollapseBtn" title="Collapse" aria-label="Collapse">▾</button>
+      <button class="ccBtn" id="ccCloseBtn" title="Close" aria-label="Close">✕</button>
     </div>
+    <div id="ccTranscript"></div>
+    <div class="askRow">
+      <input type="text" id="companionQuestion" placeholder="Ask anything…"
+        autocomplete="off" autocapitalize="sentences" enterkeyhint="send">
+      <button class="ghostBtn" id="companionMicBtn" title="Speak your question"
+        aria-label="Speak your question">🎤</button>
+      <button class="ghostBtn accent" id="companionAskBtn">Ask</button>
+    </div>
+    <div class="voiceNote" id="companionVoiceNote"></div>
+    <div id="ccToggles">
+      <label class="ccTog" title="Read answers aloud"><input type="checkbox" id="companionSpeakToggle"><span>🔊 Speak</span></label>
+      <label class="ccTog" title="Start listening when opened"><input type="checkbox" id="companionAutoListen"><span>🎤 Open=listen</span></label>
+      <label class="ccTog" title="Hands-free back-and-forth"><input type="checkbox" id="companionConvoToggle"><span>🔁 Convo</span></label>
+    </div>
+    <div class="switchHint">No sound? Check the side silent switch.</div>
   </div>
+  <div id="fabStatus" style="display:none;"><span class="dot"></span><span id="fabStatusText"></span></div>
 
   <button id="companionFab" title="Ask the companion" aria-label="Ask the companion">✦</button>
 

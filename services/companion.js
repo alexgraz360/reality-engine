@@ -25,8 +25,8 @@ const SYSTEM_PROMPT =
   "reality modes. If a context line describes what the user is doing or seeing right now, " +
   "ground your answer in it; if there is no context line, simply answer from your knowledge. " +
   "Answer in 2–4 short sentences of plain text (no markdown, no code blocks) — the reply may " +
-  "be spoken aloud. You are Q&A only: you cannot take actions, control devices, or remember " +
-  "past conversations.";
+  "be spoken aloud. Recent turns of this conversation may precede the question; use them to " +
+  "resolve follow-ups. You are Q&A only: you cannot take actions or control devices.";
 
 const ASK_TIMEOUT_MS = 120_000; // local CPU inference can be slow, esp. the first answer
 
@@ -62,7 +62,10 @@ export const companion = {
     if (token) storage.set("companion.token", token); else storage.remove("companion.token");
   },
 
-  async ask(prompt, context = "") {
+  // history: optional prior turns [{role:'user'|'assistant', content}] — the
+  // caller keeps the rolling window; we defensively re-cap it here so the
+  // request always fits the bridge's message-count/size limits.
+  async ask(prompt, context = "", history = []) {
     if (!this.isConfigured()) {
       return {
         ok: false,
@@ -79,8 +82,12 @@ export const companion = {
     const cfg = this.getConfig();
     const endpoint = scrubEndpoint(cfg.endpoint);
     const token = scrub(cfg.token);
+    const turns = (Array.isArray(history) ? history : [])
+      .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+      .slice(-8);
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
+      ...turns,
       {
         role: "user",
         content: (context ? `Context — what I'm doing right now: ${context}\n\nQuestion: ` : "") + prompt,

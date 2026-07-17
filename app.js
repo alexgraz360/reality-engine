@@ -135,10 +135,7 @@ document.addEventListener("visibilitychange", () => {
 
 // ---------------------------------------------------------------- sheets
 function openSheet(id) { document.getElementById(id).classList.add("open"); }
-function closeSheet(id) {
-  document.getElementById(id).classList.remove("open");
-  if (id === "companionSheet") { stopSpeaking(); stopDictation(true); } // silence on close
-}
+function closeSheet(id) { document.getElementById(id).classList.remove("open"); }
 for (const btn of document.querySelectorAll("[data-close]")) {
   btn.addEventListener("click", () => closeSheet(btn.dataset.close));
 }
@@ -211,35 +208,127 @@ document.getElementById("clearStorageBtn").addEventListener("click", () => {
 // About
 document.getElementById("aboutBtn").addEventListener("click", () => openSheet("aboutSheet"));
 
-// Companion (the global floating ✦): available on the home screen and in every mode.
-// Grounded when the active mode reports context via getContext(); a general assistant
-// otherwise (the context section hides so we never show a stale/empty line).
+// Companion (the global floating ✦): a NON-MODAL card — the app underneath
+// stays fully usable (scroll, taps, the astronomy iframe) while the companion
+// is open, thinking, or speaking. Grounded via the active mode's getContext().
 function activeContext() {
   try { return active ? (active.mod.getContext() || "") : ""; } catch (e) { console.error(e); return ""; }
 }
 
-function renderCompanionContext() {
-  const context = activeContext();
-  document.getElementById("companionContextSection").style.display = context ? "" : "none";
-  document.getElementById("companionContext").textContent = context;
-  return context;
+const card = document.getElementById("companionCard");
+const fabStatusEl = document.getElementById("fabStatus");
+let cardState = "closed";  // "closed" | "open" | "collapsed"
+let unreadReply = false;   // an answer landed while collapsed
+let uiStatus = "idle";     // "idle" | "thinking" | "speaking" | "listening"
+let convo = [];            // rolling transcript: [{ role, content, meta? }]
+const HISTORY_SENT = 8;    // messages sent with each ask (~4 exchanges)
+const HISTORY_KEPT = 12;   // messages retained in the UI/memory
+
+function statusLabel() {
+  return uiStatus === "thinking" ? "thinking…"
+    : uiStatus === "speaking" ? "speaking…"
+    : uiStatus === "listening" ? "listening…" : "";
+}
+
+function setStatus(s) {
+  uiStatus = s;
+  document.getElementById("ccStatus").textContent = statusLabel();
+  refreshFabStatus();
+}
+
+function refreshFabStatus() {
+  // The tiny pill next to the collapsed ✦: activity while collapsed, plus a
+  // "new reply" badge when an answer arrived unseen.
+  const show = cardState === "collapsed" && (unreadReply || uiStatus !== "idle");
+  fabStatusEl.style.display = show ? "block" : "none";
+  if (!show) return;
+  fabStatusEl.classList.toggle("newreply", unreadReply);
+  document.getElementById("fabStatusText").textContent = unreadReply ? "new reply" : statusLabel();
+}
+
+function renderTranscript(thinking) {
+  const t = document.getElementById("ccTranscript");
+  t.innerHTML = "";
+  if (!convo.length && !thinking) {
+    const hint = document.createElement("div");
+    hint.className = "ccHint";
+    hint.textContent = companion.isConfigured()
+      ? "Ask anything — astronomy, physics, the world. When a mode is open, the companion knows what you're doing."
+      : "Not configured yet — scan the bridge QR (show-qr.ps1), or add endpoint + token in Settings.";
+    t.appendChild(hint);
+    return;
+  }
+  convo.forEach((m) => {
+    const d = document.createElement("div");
+    d.className = "ccMsg " + (m.role === "user" ? "user" : "ai");
+    d.textContent = m.content;
+    if (m.meta) {
+      const meta = document.createElement("div");
+      meta.className = "ccMeta";
+      meta.textContent = m.meta;
+      d.appendChild(meta);
+    }
+    t.appendChild(d);
+  });
+  if (thinking) {
+    const d = document.createElement("div");
+    d.className = "ccMsg sys";
+    d.textContent = "thinking… (local model, ~10 s)";
+    t.appendChild(d);
+  }
+  t.scrollTop = t.scrollHeight;
+}
+
+function transcriptNote(text) { // transient system line (errors etc.) — not part of history
+  const t = document.getElementById("ccTranscript");
+  const d = document.createElement("div");
+  d.className = "ccMsg sys";
+  d.textContent = text;
+  t.appendChild(d);
+  t.scrollTop = t.scrollHeight;
+}
+
+function openCard(withAutoListen) {
+  card.style.display = "flex";
+  cardState = "open";
+  unreadReply = false;
+  refreshFabStatus();
+  renderTranscript(uiStatus === "thinking");
+  document.getElementById("ccStatus").textContent = statusLabel();
+  if (withAutoListen && autoListenToggle.checked) {
+    if (SR && !micDenied) startListening(); // guard inside prevents double-start
+    else document.getElementById("companionQuestion").focus();
+  }
+}
+
+function collapseCard() {
+  card.style.display = "none";
+  cardState = "collapsed"; // conversation loop, TTS, and pending asks keep running
+  refreshFabStatus();
+}
+
+function closeCard() {
+  card.style.display = "none";
+  cardState = "closed";
+  unreadReply = false;
+  disarmLoop();
+  stopSpeaking();
+  stopDictation(true);
+  setStatus("idle");
 }
 
 document.getElementById("companionFab").addEventListener("click", () => {
   primeTTS(); // unlock speech inside this gesture (once per session)
-  renderCompanionContext();
-  document.getElementById("companionReply").textContent = companion.isConfigured()
-    ? "Ask away — answers come from your own machine."
-    : "Not configured yet — scan the bridge QR (show-qr.ps1), or add endpoint + token in Settings.";
-  document.getElementById("companionReplyMeta").textContent = "";
-  openSheet("companionSheet");
-  // One-tap talk: opening the sheet starts listening (the guard in
-  // startListening makes double-starts impossible). Unsupported → just focus
-  // the typed box; denial surfaces only the existing permission help.
-  if (autoListenToggle.checked) {
-    if (SR) startListening();
-    else document.getElementById("companionQuestion").focus();
-  }
+  if (cardState === "open") collapseCard();
+  else openCard(cardState === "closed"); // expand from collapsed = no re-listen
+});
+document.getElementById("ccCollapseBtn").addEventListener("click", collapseCard);
+document.getElementById("ccCloseBtn").addEventListener("click", closeCard);
+document.getElementById("ccNewBtn").addEventListener("click", () => {
+  convo = [];
+  stopSpeaking();
+  disarmLoop();
+  renderTranscript(false);
 });
 
 // ---- voice out (speechSynthesis) — opt-in via a persisted toggle ----
@@ -277,7 +366,7 @@ function loadVoices() {
   if (ttsVoices.length && pendingSpeak) {
     const queued = pendingSpeak;
     pendingSpeak = null;
-    speakNow(queued);
+    speakNow(queued.text, queued.onDone);
   }
 }
 loadVoices();
@@ -309,7 +398,7 @@ function chunkText(text) {
   return chunks;
 }
 
-function speakNow(text) {
+function speakNow(text, onDone) {
   const session = ++speakSession;
   speechSynthesis.cancel();
   // Give cancel() a beat to fully clear (iOS stalls if speak() follows at once).
@@ -318,31 +407,39 @@ function speakNow(text) {
     if (speechSynthesis.paused) { try { speechSynthesis.resume(); } catch (e) {} }
     const chunks = chunkText(text);
     lastChunkCount = chunks.length;
+    let finished = 0;
+    const chunkDone = () => {
+      // onDone fires once, after the FINAL chunk, and only if this speak
+      // wasn't superseded (a stop bumps speakSession, silencing the callback).
+      if (++finished === chunks.length && session === speakSession && onDone) onDone();
+    };
     chunks.forEach((c, i) => {
       const u = new SpeechSynthesisUtterance(c);
       u.lang = navigator.language || "en-US";
       if (ttsPreferred) u.voice = ttsPreferred;
       u.onstart = () => console.debug(`tts chunk ${i + 1}/${chunks.length} start`);
-      u.onend = () => console.debug(`tts chunk ${i + 1}/${chunks.length} end`);
-      u.onerror = (e) => console.warn("tts error:", e.error);
+      u.onend = () => { console.debug(`tts chunk ${i + 1}/${chunks.length} end`); chunkDone(); };
+      u.onerror = (e) => { console.warn("tts error:", e.error); chunkDone(); }; // never hang the loop
       speechSynthesis.speak(u); // enqueued; the engine plays them in order
     });
     if (speechSynthesis.paused) { try { speechSynthesis.resume(); } catch (e) {} }
   }, 80);
 }
 
-function speakReply(text) {
-  if (!ttsSupported || !speakToggle.checked || !text) return;
+function speakReply(text, onDone) {
+  if (!ttsSupported || !speakToggle.checked || !text) return false;
   if (!ttsVoices.length) {
     // Voices not loaded yet: queue for voiceschanged, with a fallback timer so
     // engines that can speak without listing voices still get the answer.
-    pendingSpeak = text;
+    const queued = { text, onDone };
+    pendingSpeak = queued;
     setTimeout(() => {
-      if (pendingSpeak === text) { pendingSpeak = null; speakNow(text); }
+      if (pendingSpeak === queued) { pendingSpeak = null; speakNow(text, onDone); }
     }, 1500);
-    return;
+    return true;
   }
-  speakNow(text);
+  speakNow(text, onDone);
+  return true;
 }
 
 function stopSpeaking() {
@@ -371,14 +468,19 @@ if (!SR) {
   voiceNote.textContent = "Voice input isn't supported in this browser — type your question instead.";
 }
 
-function getRecognition() {
-  if (recognition) return recognition;
+// Conversation-mode loop state: "armed" means the current/next listen was
+// started by the hands-free loop (not a manual tap), so its outcome decides
+// whether the loop continues.
+let micDenied = false;    // set on not-allowed; auto-listen + loop stay out of the way
+let convoArmed = false;
+let noSpeechRuns = 0;     // consecutive silent loop turns; 2 ends the loop quietly
+
+function disarmLoop() { convoArmed = false; noSpeechRuns = 0; }
+
+// Handler wiring is separate from construction so the verification harness can
+// inject a stub recognizer and still exercise the REAL handler logic.
+function wireRecognition(rec) {
   const input = document.getElementById("companionQuestion");
-  const rec = new SR();
-  rec.lang = navigator.language || "en-US";
-  rec.interimResults = true;   // live transcript into the box
-  rec.continuous = false;      // one question per tap
-  rec.maxAlternatives = 1;
   rec.onresult = (e) => {
     let interim = "";
     for (const r of e.results) (r.isFinal ? (finalTranscript += r[0].transcript) : (interim += r[0].transcript));
@@ -389,19 +491,24 @@ function getRecognition() {
     switch (e.error) {
       case "aborted":       // benign: self-abort / we cancelled — silent
         break;
-      case "no-speech":     // benign: quiet hint, no error tone
-        voiceNote.textContent = "Didn't catch that — tap the mic and try again, or type.";
+      case "no-speech":     // benign; in the hands-free loop, count it
+        if (convoArmed) noSpeechRuns++;
+        else voiceNote.textContent = "Didn't catch that — tap the mic and try again, or type.";
         break;
       case "not-allowed":
       case "service-not-allowed":
+        micDenied = true;   // don't keep auto-starting a mic that can't open
+        disarmLoop();
         input.value = "";
         voiceNote.textContent = "Microphone access was denied — allow the mic for this site (iOS: Settings → Safari → Microphone), or just type.";
         break;
       case "audio-capture":
+        disarmLoop();
         input.value = "";
         voiceNote.textContent = "No microphone was found on this device — type your question instead.";
         break;
       case "network":
+        disarmLoop();
         input.value = "";
         voiceNote.textContent = "The speech service is unreachable right now — type your question instead.";
         break;
@@ -412,18 +519,41 @@ function getRecognition() {
   rec.onend = () => {
     listening = false;
     micBtn.classList.remove("listening");
+    if (uiStatus === "listening") setStatus("idle");
     const send = !discardDictation && finalTranscript && input.value.trim();
     discardDictation = false;
     finalTranscript = "";
-    if (send) askCompanion(); // speak → auto-send
+    if (send) {
+      noSpeechRuns = 0;   // the loop heard something — reset the silence counter
+      askCompanion();     // speak → auto-send (loop stays armed via maybeRelisten)
+    } else if (convoArmed) {
+      if (noSpeechRuns >= 2) {
+        disarmLoop();     // two silent turns: end quietly, no error banner
+        voiceNote.textContent = "Conversation paused — tap the mic or just type to continue.";
+      } else {
+        startListening(); // one more chance to catch the user's turn
+      }
+    }
   };
+}
+
+function getRecognition() {
+  if (recognition) return recognition;
+  const rec = new SR();
+  rec.lang = navigator.language || "en-US";
+  rec.interimResults = true;   // live transcript into the box
+  rec.continuous = false;      // one utterance per listen
+  rec.maxAlternatives = 1;
+  wireRecognition(rec);
   recognition = rec;
   return rec;
 }
 
 // stop(discard=false) finalizes (may auto-send); stop(discard=true) throws the
-// in-progress dictation away (sheet close, mode exit, new question).
+// in-progress dictation away (card close, mode exit, new question) and always
+// ends the hands-free loop cycle.
 function stopDictation(discard = false) {
+  if (discard) disarmLoop();
   if (!listening || !recognition) return;
   discardDictation = discard;
   try { discard ? recognition.abort() : recognition.stop(); } catch (e) { /* already stopped */ }
@@ -440,12 +570,14 @@ function startListening() {
   finalTranscript = "";
   discardDictation = false;
   micBtn.classList.add("listening");
+  setStatus("listening");
   voiceNote.textContent = "Listening… speak your question (tap again to stop).";
   input.value = "";
   try { rec.start(); recStartCount++; } catch (err) {
     // start() throws if the engine is somehow mid-shutdown — reset quietly
     listening = false;
     micBtn.classList.remove("listening");
+    setStatus("idle");
     voiceNote.textContent = "";
   }
 }
@@ -453,9 +585,39 @@ function startListening() {
 micBtn.addEventListener("click", () => {
   if (!SR) return;
   primeTTS(); // any companion gesture may be the session's first
-  if (listening) { stopDictation(false); return; } // tap again = finish early
+  if (listening) {
+    // Stop-tap: finalize (sends if something was said) AND end the loop cycle.
+    disarmLoop();
+    stopDictation(false);
+    return;
+  }
+  disarmLoop(); // a manual listen is not a loop turn
   startListening();
 });
+
+// ---- hands-free "Conversation mode": after an answer is fully SPOKEN, listen
+// for the next turn. Requires Speak-answers on; never overlaps mic and TTS
+// (this runs only from the final chunk's onend, and startListening cancels any
+// residual speech). The `listening` guard makes double-starts impossible.
+const convoToggle = document.getElementById("companionConvoToggle");
+convoToggle.checked = Boolean(storage.get("companion.convoMode", false));
+if (!SR) convoToggle.disabled = true;
+convoToggle.addEventListener("change", () => {
+  storage.set("companion.convoMode", convoToggle.checked);
+  if (!convoToggle.checked) {
+    const wasLoopListen = convoArmed && listening;
+    disarmLoop();
+    if (wasLoopListen) stopDictation(true); // stop the loop immediately
+  }
+});
+
+function maybeRelisten() {
+  if (!convoToggle.checked || !speakToggle.checked) return;
+  if (cardState === "closed") return; // collapsed keeps looping; closed stops
+  if (!SR || micDenied || listening || asking) return;
+  convoArmed = true;
+  startListening();
+}
 
 // ---- "Open and listen" (one-tap talk): persisted, default ON ----
 const autoListenToggle = document.getElementById("companionAutoListen");
@@ -474,9 +636,20 @@ window.RE_voiceDebug = {
   lastChunkCount: () => lastChunkCount,
   chunk: chunkText,
   startListening: startListening,
+  // convo/card state
+  cardState: () => cardState,
+  status: () => uiStatus,
+  convoLen: () => convo.length,
+  armed: () => convoArmed,
+  noSpeechRuns: () => noSpeechRuns,
+  maybeRelisten: maybeRelisten,
+  // Inject a stub recognizer wired with the REAL handlers, so tests can drive
+  // onerror/onend without a live microphone.
+  _setRecognitionForTest: (fake) => { recognition = fake; wireRecognition(fake); return fake; },
+  _recognition: () => recognition,
 };
 
-// ---- ask flow (typed or dictated) ----
+// ---- ask flow (typed or dictated), multi-turn ----
 let asking = false;
 async function askCompanion() {
   if (asking) return;
@@ -486,27 +659,42 @@ async function askCompanion() {
   stopDictation(true); // question text is already captured — discard the dictation
   stopSpeaking();      // a new question interrupts the previous answer
   primeTTS();          // in case this Ask is the session's first companion gesture
-  const reply = document.getElementById("companionReply");
-  const meta = document.getElementById("companionReplyMeta");
-  const context = renderCompanionContext(); // re-read at ask time — freshest reading
+  const context = activeContext(); // re-read at ask time — freshest reading
   asking = true;
   document.getElementById("companionAskBtn").disabled = true;
-  reply.textContent = "Thinking… (your local model is generating; the first answer can take ~10 s)";
-  meta.textContent = "";
+  setStatus("thinking");
+  renderTranscript(true);
   voiceNote.textContent = SR ? "" : voiceNote.textContent;
+  input.value = ""; // box is free for the next question while this one thinks
   try {
-    const res = await companion.ask(question, context);
-    reply.textContent = res.text;
-    meta.textContent = res.ok && res.stats
-      ? `local model · ${res.stats.tokensPerSec ?? "?"} tok/s · ${res.stats.seconds ?? "?"} s`
-      : "";
+    // Multi-turn memory: recent turns ride along so follow-ups resolve
+    // ("what about the one next to it?"). Capped to respect the proxy limits.
+    const history = convo.slice(-HISTORY_SENT).map((m) => ({ role: m.role, content: m.content }));
+    const res = await companion.ask(question, context, history);
     if (res.ok) {
-      input.value = "";
-      speakReply(res.text);
+      convo.push(
+        { role: "user", content: question },
+        { role: "assistant", content: res.text,
+          meta: res.stats ? `local model · ${res.stats.tokensPerSec ?? "?"} tok/s · ${res.stats.seconds ?? "?"} s` : "" });
+      if (convo.length > HISTORY_KEPT) convo = convo.slice(-HISTORY_KEPT);
+      renderTranscript(false);
+      if (cardState === "collapsed") unreadReply = true;
+      const willSpeak = speakReply(res.text, () => {
+        setStatus("idle");
+        maybeRelisten(); // hands-free loop: answer finished SPEAKING → listen
+      });
+      setStatus(willSpeak ? "speaking" : "idle");
+    } else {
+      renderTranscript(false);
+      transcriptNote(res.text); // error line — shown, never stored as history
+      input.value = question;   // hand the question back for retry
+      disarmLoop();
+      setStatus("idle");
     }
   } finally {
     asking = false;
     document.getElementById("companionAskBtn").disabled = false;
+    refreshFabStatus();
   }
 }
 document.getElementById("companionAskBtn").addEventListener("click", askCompanion);
