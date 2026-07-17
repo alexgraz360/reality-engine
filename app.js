@@ -22,6 +22,12 @@ const REGISTRY = [
     load: () => import("./modes/pendulum.js"),
   },
   {
+    id: "projectile", title: "Projectile · speed & range", family: "Learn", icon: "⚾",
+    permissions: ["camera"],
+    blurb: "Throw a ball — on-device ML tracks it and physics fits launch speed, angle, peak, and range. Approximate by design.",
+    load: () => import("./modes/projectile.js"),
+  },
+  {
     id: "astronomy", title: "Astronomy", family: "Learn", icon: "🔭",
     permissions: ["camera", "motion", "orientation", "geolocation"],
     blurb: "Point at the sky — planets, stars, time travel, events. Native mode: the ✦ companion knows what you're looking at.",
