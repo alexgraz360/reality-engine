@@ -230,6 +230,25 @@
     padding: 6px 4px; font-size: 10.5px; font-weight: 600; color: var(--text);
     cursor: pointer; white-space: nowrap; min-width: 0; }
   .ccTog input { accent-color: var(--accent); width: 14px; height: 14px; flex-shrink: 0; }
+  /* Confirmation gate: nothing writes/deletes until Confirm is tapped. */
+  #ccConfirm { border: 1px solid rgba(255, 179, 71, 0.55); background: rgba(255, 179, 71, 0.08);
+    border-radius: 12px; padding: 10px 12px; }
+  #ccConfirmText { font-size: 13px; color: var(--text); line-height: 1.45; margin-bottom: 9px; }
+  #ccConfirmBtns { display: flex; gap: 8px; }
+  #ccConfirmBtns .ghostBtn { flex: 1; }
+
+  .nrRow { display: flex; align-items: center; gap: 10px; padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .nrRow:last-child { border-bottom: none; }
+  .nrMain { flex: 1; min-width: 0; font-size: 13px; color: var(--text); overflow-wrap: break-word; }
+  .nrMeta { font-size: 10.5px; color: var(--dim); font-family: var(--mono); margin-top: 2px; }
+  .nrMeta.due { color: var(--warn); }
+  .nrMeta.fired { color: var(--good); }
+  .nrDel { appearance: none; border: 1px solid rgba(255, 92, 108, 0.4); background: transparent;
+    color: var(--bad); border-radius: 8px; padding: 5px 10px; font-size: 11.5px; cursor: pointer;
+    flex-shrink: 0; }
+  .nrEmpty { color: var(--dim); font-size: 12px; padding: 4px 0; }
+
   #ccVoiceRow { display: flex; gap: 6px; }
   #ccVoiceRow select { appearance: none; -webkit-appearance: none; border: 1px solid var(--line);
     background: var(--panel); color: var(--text); border-radius: 9px; padding: 6px 8px;
@@ -260,6 +279,7 @@
         <h1>Reality <span>Engine</span></h1>
         <div class="sub">One open engine, many modes — see, measure, and understand the world.</div>
       </div>
+      <button class="iconBtn" id="notesBtn" title="Notes &amp; Reminders" aria-label="Notes and Reminders">🗒</button>
       <button class="iconBtn" id="settingsBtn" title="Settings" aria-label="Settings">⚙︎</button>
       <button class="iconBtn" id="aboutBtn" title="About" aria-label="About">ⓘ</button>
     </header>
@@ -315,6 +335,27 @@
     </div>
   </div>
 
+  <div class="sheetWrap" id="notesSheet">
+    <div class="sheet">
+      <h2>🗒 Notes &amp; Reminders</h2>
+      <div class="sub">Stored only on this device — nothing leaves it. The ✦ companion can create,
+        read, and delete these too (always with your confirmation).</div>
+      <section>
+        <h3>Reminders</h3>
+        <p class="mono" style="margin-bottom:8px;">Reminders fire while the app is open
+          (plus a notification if allowed). Background/locked reminders need a native app
+          or the glasses — that's a later capability.</p>
+        <button class="ghostBtn" id="notifPermBtn" style="display:none; margin-bottom:8px;">🔔 Allow notifications</button>
+        <div id="remindersList"></div>
+      </section>
+      <section>
+        <h3>Notes</h3>
+        <div id="notesList"></div>
+      </section>
+      <button class="ghostBtn sheetClose" data-close="notesSheet">Close</button>
+    </div>
+  </div>
+
   <div class="sheetWrap" id="aboutSheet">
     <div class="sheet">
       <h2>About Reality Engine</h2>
@@ -352,6 +393,13 @@
       <button class="ccBtn" id="ccCloseBtn" title="Close" aria-label="Close">✕</button>
     </div>
     <div id="ccTranscript"></div>
+    <div id="ccConfirm" style="display:none;">
+      <div id="ccConfirmText"></div>
+      <div id="ccConfirmBtns">
+        <button class="ghostBtn accent" id="ccConfirmYes">Confirm</button>
+        <button class="ghostBtn" id="ccConfirmNo">Cancel</button>
+      </div>
+    </div>
     <div class="askRow">
       <input type="text" id="companionQuestion" placeholder="Ask anything…"
         autocomplete="off" autocapitalize="sentences" enterkeyhint="send">

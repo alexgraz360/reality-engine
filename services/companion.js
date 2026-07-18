@@ -24,9 +24,21 @@ const SYSTEM_PROMPT =
   "physics, and the wider world, living inside an open, phone-first platform of swappable " +
   "reality modes. If a context line describes what the user is doing or seeing right now, " +
   "ground your answer in it; if there is no context line, simply answer from your knowledge. " +
-  "Answer in 2–4 short sentences of plain text (no markdown, no code blocks) — the reply may " +
-  "be spoken aloud. Recent turns of this conversation may precede the question; use them to " +
-  "resolve follow-ups. You are Q&A only: you cannot take actions or control devices.";
+  "Answer in 2–4 short sentences of plain text — the reply may be spoken aloud. Recent turns " +
+  "of this conversation may precede the question; use them to resolve follow-ups.\n\n" +
+  "LOCAL ACTIONS: you can help manage the user's on-device notes and reminders. When — and " +
+  "ONLY when — the user clearly asks to create, list, or delete a note or reminder, reply " +
+  "with ONE short sentence followed by a fenced JSON block, exactly like:\n" +
+  "```json\n{\"action\":\"add_note\",\"note\":\"buy milk\"}\n```\n" +
+  "Valid forms: {\"action\":\"add_note\",\"note\":\"...\"} · {\"action\":\"list_notes\"} · " +
+  "{\"action\":\"delete_note\",\"match\":\"text to match\"} · " +
+  "{\"action\":\"add_reminder\",\"text\":\"...\",\"when\":\"YYYY-MM-DDTHH:MM\"} (local time; " +
+  "resolve relative times like 'in 10 minutes' or 'at 6pm' using the current date/time " +
+  "provided) · {\"action\":\"list_reminders\"} · {\"action\":\"delete_reminder\",\"match\":\"...\"}. " +
+  "The app shows the user a confirmation before anything is saved or deleted, so never claim " +
+  "an action is already done — say what you're proposing. Never emit an action block the user " +
+  "didn't clearly ask for; for everything else reply normally with no JSON and no code blocks. " +
+  "You cannot control devices or reach anything outside this device.";
 
 const ASK_TIMEOUT_MS = 120_000; // local CPU inference can be slow, esp. the first answer
 
@@ -165,12 +177,19 @@ export const companion = {
     const turns = (Array.isArray(history) ? history : [])
       .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
       .slice(-8);
+    // Local wall-clock so the model can resolve "in 10 minutes" / "at 6pm".
+    const now = new Date();
+    const pad = (v) => String(v).padStart(2, "0");
+    const nowLine = `Current local date/time: ${now.toDateString()} ${pad(now.getHours())}:${pad(now.getMinutes())} ` +
+      `(${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())})`;
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
       ...turns,
       {
         role: "user",
-        content: (context ? `Context — what I'm doing right now: ${context}\n\nQuestion: ` : "") + prompt,
+        content: nowLine + "\n" +
+          (context ? `Context — what I'm doing right now: ${context}\n` : "") +
+          "\nQuestion: " + prompt,
       },
     ];
 
