@@ -220,6 +220,17 @@
   input[type="number"] { appearance: none; -webkit-appearance: none; border: 1px solid var(--line);
     background: var(--panel-solid); color: var(--text); border-radius: 10px; padding: 8px 10px;
     font-size: 15px; font-family: var(--mono); width: 90px; text-align: center; }
+  /* Football situation panel */
+  .fbRow { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+  .fbLbl { font-size: 11px; color: var(--dim); width: 62px; flex-shrink: 0; letter-spacing: 0.04em; }
+  .fbSeg { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
+  .fbSeg.fbWrap { flex-wrap: wrap; }
+  .fbChip { appearance: none; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .fbChip.on { border-color: var(--accent); color: var(--accent); background: rgba(77,163,255,0.12); }
+  .fbChip:active { transform: scale(0.96); }
+  .fbVal { font-family: var(--mono); font-size: 13px; font-weight: 700; min-width: 42px; text-align: center; }
+
   input[type="url"], input[type="password"], input[type="text"] { appearance: none;
     -webkit-appearance: none; border: 1px solid var(--line); background: var(--panel-solid);
     color: var(--text); border-radius: 10px; padding: 9px 12px; font-size: 14px; width: 100%; }

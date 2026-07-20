@@ -34,6 +34,13 @@ export default {
                                   // return a string (or Promise<string>) to handle it
                                   // locally — it is shown/spoken through the normal
                                   // path — or null to let the model answer instead
+
+  // ---- OPTIONAL: prime fall-through companion answers ----
+  getSystemContext() {},          // return an extra system-prompt string and the shell
+                                  // passes it to companion.ask as opts.systemExtra, so
+                                  // model answers WHILE THIS MODE IS ACTIVE are primed
+                                  // (e.g. an analyst persona). Additive; modes without
+                                  // it are unaffected.
 };
 ```
 

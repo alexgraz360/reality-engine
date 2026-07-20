@@ -1,0 +1,62 @@
+{
+  "reference": "General American-football concepts. High-level tendencies for understanding a broadcast — not certainties, not team-specific.",
+  "personnel": [
+    { "id": "10", "name": "10 personnel", "detail": "1 RB, 0 TE, 4 WR. Spread-out pass look; often empty or four-wide. Signals pass-lean and tempo; defense counters with a nickel/dime and lighter box." },
+    { "id": "11", "name": "11 personnel", "detail": "1 RB, 1 TE, 3 WR. The modern base — balanced, keeps run and pass both live. Defense usually answers with nickel (5 DBs)." },
+    { "id": "12", "name": "12 personnel", "detail": "1 RB, 2 TE, 2 WR. Bigger, run-friendly but a strong play-action base; two TEs stress the edges. Defense may stay in base or bring an extra box defender." },
+    { "id": "21", "name": "21 personnel", "detail": "2 RB (one often a fullback), 1 TE, 2 WR. Downhill run and lead-blocking; classic short-yardage and play-action set." },
+    { "id": "22", "name": "22 personnel", "detail": "2 RB, 2 TE, 1 WR. Heaviest common grouping — short-yardage, goal line, or milking the clock. Expect a loaded box." },
+    { "id": "13", "name": "13 personnel", "detail": "1 RB, 3 TE, 1 WR. Heavy, gap-scheme run and boot-action pass; unbalanced looks are common." }
+  ],
+  "formations": [
+    { "id": "i-form", "name": "I-formation", "detail": "QB under center, fullback and running back stacked behind. Downhill run and lead blocking; sets up play-action off the run threat." },
+    { "id": "singleback", "name": "Singleback", "detail": "QB under center or in gun with one back. Balanced; the back can run either way and the offense can flood the field with receivers." },
+    { "id": "shotgun", "name": "Shotgun", "detail": "QB ~5 yards deep to catch the snap. Pass-friendly, better sightlines, quicker three-step timing; still supports zone-read and draw runs." },
+    { "id": "pistol", "name": "Pistol", "detail": "QB ~4 yards back with the RB directly behind. A hybrid — keeps downhill run identity of under-center while giving the QB a gun-style read." },
+    { "id": "empty", "name": "Empty", "detail": "No back beside the QB — five eligible receivers spread out. Almost always pass; forces the defense to declare coverage and leaves the QB to handle protection reads." },
+    { "id": "trips", "name": "Trips", "detail": "Three receivers to one side. Stresses the coverage numbers to that side and isolates the backside receiver one-on-one." },
+    { "id": "bunch", "name": "Bunch", "detail": "Three receivers clustered tight together. Creates natural rubs/picks and is hard to press; usually beats man coverage." },
+    { "id": "twins", "name": "Twins", "detail": "Two receivers to one side. A balanced two-by-two look that keeps route combinations simple and reads clean." }
+  ],
+  "coverages": [
+    { "id": "cover-0", "name": "Cover 0", "spot": "No deep safety — everybody is manned up and there is often an extra rusher.", "weakness": "One broken tackle or beaten man and there is no help behind it; beaten by quick, decisive throws and mobile QBs.", "detail": "All-out man pressure. High risk, high reward — the offense wants a quick answer or a big play." },
+    { "id": "cover-1", "name": "Cover 1", "spot": "One deep safety in the middle, man coverage underneath, often a free rusher or a robber lurking.", "weakness": "Man-beating routes — crossers, mesh, pick concepts — and the QB's legs if the rush is contained.", "detail": "Man-free. The single high safety is the only deep help, so receivers must be beaten one-on-one." },
+    { "id": "cover-2", "name": "Cover 2", "spot": "Two deep safeties splitting the field in half, five underneath zone defenders.", "weakness": "The deep middle between the safeties and the sideline behind the corner (the honey hole); also runs, with only seven in the box.", "detail": "Two-deep zone. Corners jam and sink; strong against the short and intermediate outside." },
+    { "id": "cover-3", "name": "Cover 3", "spot": "Three deep defenders each take a third of the field; four underneath.", "weakness": "Flood the underneath — four verticals stresses the deep thirds, and out-breaking and flat routes soften the short zones.", "detail": "The most common zone shell. One high safety, corners bail to deep thirds; sound against deep balls, softer underneath." },
+    { "id": "cover-4", "name": "Cover 4 (quarters)", "spot": "Four deep defenders each take a quarter; safeties read and can jump routes or fit the run.", "weakness": "Underneath and the flats early; a good run look because safeties can trigger downhill.", "detail": "Quarters. Built to take away deep shots and rally to the run; underneath windows are open before the safeties fall off." },
+    { "id": "cover-6", "name": "Cover 6", "spot": "Quarters to one side, Cover 2 to the other — the field is split (roughly a quarter-quarter-half look).", "weakness": "Attacking the seam between the two coverage rules, and knowing which side is soft.", "detail": "A split-field answer that lets the defense play different rules to the field and the boundary." },
+    { "id": "tampa-2", "name": "Tampa 2", "spot": "Cover 2 look but the middle linebacker sprints to the deep middle, closing the Cover 2 hole.", "weakness": "The flats and the sidelines, and quick underneath throws before the middle closes.", "detail": "A Cover 2 variant that fixes the deep-middle vulnerability by dropping the Mike deep." }
+  ],
+  "pressures": [
+    { "id": "zone-blitz", "name": "Zone blitz", "detail": "Bring extra rushers but drop a lineman into coverage, keeping a zone shell behind it. Confuses protections while staying sound; often a five-man rush with three-deep, three-under behind it." },
+    { "id": "fire-zone", "name": "Fire zone", "detail": "The classic five-man zone pressure — overload one side, drop the backside end, play three-deep three-under. Pressure without gambling the whole coverage." },
+    { "id": "corner-blitz", "name": "Corner/nickel blitz", "detail": "A defensive back rushes off the edge, usually from the slot. Fast pressure at the QB's blind or throwing side; leaves that receiver's area for someone to rotate to." },
+    { "id": "double-a", "name": "Double-A-gap", "detail": "Two linebackers walk up over the center's inside gaps pre-snap. Threatens interior pressure and forces the protection to declare; often a bluff that bails at the snap." },
+    { "id": "simulated", "name": "Simulated pressure", "detail": "Show blitz, rush only four. Muddies the QB's protection math and post-snap read without giving up an extra coverage defender." }
+  ],
+  "tendencies": [
+    { "id": "first-10", "name": "1st and 10", "detail": "The most balanced down; run and play-action both live. Defenses stay base/nickel and honest. A run here sets up the play-action shot later." },
+    { "id": "second-short", "name": "2nd and short (1-3)", "detail": "Offense-friendly — the whole playbook is open, so it is a prime play-action and shot-play down. Defenses must respect the run, which springs the pass." },
+    { "id": "second-long", "name": "2nd and long (8+)", "detail": "Pass-leaning but not desperate; draws, screens, and check-downs are common to set up a manageable third down. Defense plays coverage and rushes four." },
+    { "id": "third-short", "name": "3rd and short (1-2)", "detail": "Run or quick-game lean; heavier personnel and a loaded box are common. Defense sells out to stop the sticks; play-action off it can hit big." },
+    { "id": "third-medium", "name": "3rd and medium (3-6)", "detail": "The true chess match — sticks routes, option routes, and pick concepts vs. man; defense mixes coverage and may bring pressure." },
+    { "id": "third-long", "name": "3rd and long (7+)", "detail": "Clear pass down. Expect the QB in gun/empty, a four- or five-man rush, and zone behind it; the offense targets the sticks and hopes for a scramble drill." },
+    { "id": "red-zone", "name": "Red zone", "detail": "Field shrinks, deep routes die, windows tighten. Fades, slants, picks, and quick outs rule; defenses play more man and tighter coverage. Turnovers and pressure spike in value." },
+    { "id": "goal-line", "name": "Goal line", "detail": "Heavy personnel, power runs, play-action off it, and back-shoulder fades. Defense loads the box with base or goal-line personnel." },
+    { "id": "backed-up", "name": "Backed up (own 1-10)", "detail": "Conservative — safe runs and short passes to earn breathing room; defense may pressure hoping for a safety or a short field." },
+    { "id": "two-minute", "name": "Two-minute drill", "detail": "Tempo, sideline routes to stop the clock, spike threat, and clock/timeout management. Defense plays soft zone (prevent) to keep everything in front and force underneath completions." },
+    { "id": "four-minute", "name": "Four-minute (offense leading late)", "detail": "Run the ball, stay in bounds, burn clock. Defense must stop the run and use timeouts; expect heavier personnel from the offense." }
+  ],
+  "glossary": [
+    { "term": "Personnel grouping", "def": "The count of running backs and tight ends on the field, given as two digits (e.g. 11 = 1 RB, 1 TE, so 3 WR)." },
+    { "term": "Box", "def": "The area near the line of scrimmage between the tackles; 'loaded box' means extra defenders there to stop the run." },
+    { "term": "Single-high / two-high", "def": "How many safeties are deep. Single-high (one deep) hints man or Cover 1/3; two-high hints Cover 2/4 or a disguise." },
+    { "term": "Man vs zone", "def": "In man each defender covers a player; in zone each covers an area and passes receivers off. Rubs beat man; flooding beats zone." },
+    { "term": "Play-action", "def": "A fake handoff to freeze linebackers and safeties, opening throwing windows behind them. Most dangerous when the run is a real threat." },
+    { "term": "RPO", "def": "Run-pass option — the QB reads one defender after the snap and either hands off or throws based on how that defender reacts." },
+    { "term": "Pre-snap motion", "def": "A player shifting before the snap to reveal coverage (a defender following = man), create leverage, or change the numbers to a side." },
+    { "term": "Hot route", "def": "A receiver's built-in quick answer versus a blitz — a short throw that beats the extra rusher." },
+    { "term": "The sticks", "def": "The first-down line; 'at the sticks' means a route breaking right around the yardage needed." },
+    { "term": "Leverage", "def": "Which side of a receiver a defender lines up on, telling you where help is and which way he wants to funnel the route." }
+  ]
+}

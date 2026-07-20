@@ -31,6 +31,12 @@ const REGISTRY = [
     load: () => import("./modes/guide.js"),
   },
   {
+    id: "football", title: "Football · read the game", family: "Learn", icon: "🏈",
+    permissions: ["mic"],
+    blurb: "Be the smartest person in the room — set the down and what you see, get a speakable pre-snap read. General tendencies, no live feed.",
+    load: () => import("./modes/football.js"),
+  },
+  {
     id: "pendulum", title: "Pendulum · period & g", family: "Learn", icon: "🪀",
     permissions: ["motion"],
     blurb: "Swing the phone on a string — measures period T from the gyroscope and computes g in real units.",
@@ -915,7 +921,12 @@ async function askCompanion() {
     // Multi-turn memory: recent turns ride along so follow-ups resolve
     // ("what about the one next to it?"). Capped to respect the proxy limits.
     const history = convo.slice(-HISTORY_SENT).map((m) => ({ role: m.role, content: m.content }));
-    const res = await companion.ask(question, context, history);
+    // An active mode may football-prime (etc.) fall-through answers by exposing
+    // getSystemContext() — additive; modes without it are unaffected.
+    let systemExtra = "";
+    try { systemExtra = (active && active.mod && active.mod.getSystemContext && active.mod.getSystemContext()) || ""; }
+    catch (e) { console.error("getSystemContext failed:", e); }
+    const res = await companion.ask(question, context, history, { systemExtra });
     if (res.ok) {
       handleAssistantReply(question, res);
     } else {

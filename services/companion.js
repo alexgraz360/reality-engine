@@ -162,7 +162,9 @@ export const companion = {
   // history: optional prior turns [{role:'user'|'assistant', content}] — the
   // caller keeps the rolling window; we defensively re-cap it here so the
   // request always fits the bridge's message-count/size limits.
-  async ask(prompt, context = "", history = []) {
+  // opts.systemExtra: an extra system message (e.g. an active mode's analyst
+  // framing) injected after the base prompt — additive, unused by default.
+  async ask(prompt, context = "", history = [], opts = {}) {
     if (!this.isConfigured()) {
       return {
         ok: false,
@@ -201,8 +203,12 @@ export const companion = {
         "and don't pretend they did.\n\n" + knowledge.format(found),
     }] : [];
 
+    const systemExtra = opts && typeof opts.systemExtra === "string" && opts.systemExtra.trim()
+      ? [{ role: "system", content: opts.systemExtra.trim() }] : [];
+
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
+      ...systemExtra,
       ...turns,
       ...reference,
       {
