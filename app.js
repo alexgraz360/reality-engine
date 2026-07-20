@@ -12,55 +12,61 @@ import companion from "./services/companion.js";
 import localActions from "./services/actions.js";
 
 // ---------------------------------------------------------------- mode registry
-// Native modes: `load` dynamically imports the module (nothing loads until opened).
-// External entries: `url` opens the live legacy app in a new tab (gradual migration —
-// embedding via iframe would break iOS sensor/camera permission prompts, so we link).
+// USABLE modes only — every entry here renders an "Open" card under its family.
+// `load` dynamically imports the module (nothing loads until the card is tapped).
+// Things that don't exist yet live in ROADMAP below, never here, so the grid
+// never shows a card you can't actually open.
 const REGISTRY = [
   {
-    id: "pendulum", title: "Pendulum · period & g", family: "Physics", icon: "🪀",
+    id: "astronomy", title: "Astronomy", family: "Learn", icon: "🔭",
+    permissions: ["camera", "motion", "orientation", "geolocation"],
+    blurb: "Point at the sky — planets, stars, time travel, events. The ✦ companion knows what you're looking at.",
+    load: () => import("./modes/astronomy.js"),
+  },
+  {
+    id: "guide", title: "Guide · cook with me", family: "Learn", icon: "🍳",
+    permissions: ["camera", "mic"],
+    blurb: "Hands-free step-by-step coach — cooking first. Spoken steps, timers, and a look-check on your pan.",
+    load: () => import("./modes/guide.js"),
+  },
+  {
+    id: "pendulum", title: "Pendulum · period & g", family: "Learn", icon: "🪀",
     permissions: ["motion"],
-    blurb: "Swing the phone on a string — measures period T from the gyroscope and computes g. The first fully native mode.",
+    blurb: "Swing the phone on a string — measures period T from the gyroscope and computes g in real units.",
     load: () => import("./modes/pendulum.js"),
   },
   {
     id: "projectile", title: "Projectile · speed & range", family: "Learn", icon: "⚾",
     permissions: ["camera"],
-    blurb: "Throw a ball — on-device ML tracks it and physics fits launch speed, angle, peak, and range. Approximate by design.",
+    blurb: "Throw a ball — on-device ML tracks it and physics fits launch speed, angle, peak, and range.",
     load: () => import("./modes/projectile.js"),
   },
-  {
-    id: "guide", title: "Guide · cook with me", family: "Learn", icon: "🍳",
-    permissions: ["camera", "mic"],
-    blurb: "Cook a dish hands-free: one spoken step at a time, voice commands, step timers, and an on-demand look check.",
-    load: () => import("./modes/guide.js"),
-  },
-  {
-    id: "astronomy", title: "Astronomy", family: "Learn", icon: "🔭",
-    permissions: ["camera", "motion", "orientation", "geolocation"],
-    blurb: "Point at the sky — planets, stars, time travel, events. Native mode: the ✦ companion knows what you're looking at.",
-    load: () => import("./modes/astronomy.js"),
-  },
-  {
-    id: "physics", title: "Physics experiments", family: "Physics", icon: "⚗️",
-    permissions: ["camera", "motion"],
-    blurb: "The full experiments hub — object speed via ML tracking, and more. Opens the live app.",
-    url: "https://alexgraz360.github.io/physics-glasses/phase1/", external: true,
-  },
-  { id: "companion", title: "AI Companion", family: "Assistant", icon: "✦",
-    permissions: ["mic", "camera"],
-    blurb: "Talk to the engine — it sees what you see, knows the active mode, and answers by voice.", soon: true },
-  { id: "coach", title: "Basketball Coach", family: "Coaching", icon: "🏀",
-    permissions: ["camera"],
-    blurb: "Pose tracking on your shot — release angle, arc, and spoken form cues.", soon: true },
-  { id: "emotion", title: "Emotion", family: "Perception", icon: "🎭",
-    permissions: ["camera"],
-    blurb: "Honest expression & engagement cues (research + ethics pass pending — no lie detection).", soon: true },
-  { id: "translate", title: "Translation", family: "Perception", icon: "🌐",
-    permissions: ["mic", "camera"],
-    blurb: "Live speech and sign translation in the HUD.", soon: true },
-  { id: "navigate", title: "Navigation", family: "Perception", icon: "🧭",
-    permissions: ["geolocation", "camera", "orientation"],
-    blurb: "AR pins and glanceable walking directions.", soon: true },
+];
+
+// Families from VISION.md — the ONE grouping vocabulary the home screen uses.
+const FAMILIES = [
+  { key: "Learn", desc: "Understand a subject" },
+  { key: "Build", desc: "Make or fix something" },
+  { key: "Live", desc: "Navigate daily life" },
+];
+
+// Not built yet. Rendered dimmed and NON-interactive at the bottom so the plan
+// stays visible without pretending to be usable. The four physics entries were
+// inventoried from the old physics-glasses hub (stubbed there, never finished)
+// so retiring that card doesn't lose them — also tracked in MODES_CHECKLIST.md.
+const ROADMAP = [
+  { family: "Learn", title: "🔊 Sound Lab", note: "Mic FFT — frequency, loudness, musical note" },
+  { family: "Learn", title: "🍎 Free fall · measure g", note: "From the old physics hub (unfinished)" },
+  { family: "Learn", title: "🌀 Spring oscillation", note: "From the old physics hub (unfinished)" },
+  { family: "Learn", title: "📢 Speed of sound", note: "Clap-echo timing — old physics hub (unfinished)" },
+  { family: "Learn", title: "🏃 Body motion", note: "Pose tracking — old physics hub (unfinished)" },
+  { family: "Learn", title: "🌈 Light & Colour Lab", note: "Camera colour naming and brightness" },
+  { family: "Learn", title: "🏀 Form coach", note: "Pose + spoken cues for your shot" },
+  { family: "Build", title: "🔧 Guide: Repair & Assembly", note: "Same Guide engine, new step packs" },
+  { family: "Build", title: "🚗 Automotive", note: "Diagnose, guide the fix, log the history" },
+  { family: "Live", title: "🌐 Interpreter", note: "Two-way live translation, spoken" },
+  { family: "Live", title: "🧭 Navigator", note: "AR pins, arrow and distance" },
+  { family: "Live", title: "🎭 Emotion", note: "Expression cues only — ethics pass required first" },
 ];
 
 // ---------------------------------------------------------------- shell state
@@ -83,23 +89,70 @@ const services = {
   },
 };
 
-// ---------------------------------------------------------------- home cards
-const cardsEl = document.getElementById("cards");
-for (const entry of REGISTRY) {
-  const card = document.createElement("button");
-  card.className = "card" + (entry.soon ? " soon" : "") + (entry.external ? " ext" : "");
-  const foot = entry.soon ? "COMING SOON"
-    : entry.external ? "EXTERNAL · MIGRATING ↗"
-    : "Open →";
-  card.innerHTML = `
-    <span class="tag ${entry.family.toLowerCase()}">${entry.family.toUpperCase()}</span>
-    <span class="icon">${entry.icon}</span>
-    <span class="name">${entry.title}</span>
-    <span class="blurb">${entry.blurb}</span>
-    <span class="footNote">${foot}</span>`;
-  if (!entry.soon) card.addEventListener("click", () => openMode(entry));
-  cardsEl.appendChild(card);
+// ---------------------------------------------------------------- home screen
+// Companion first, then one section per family (usable modes only), then the
+// dimmed roadmap, then the legacy link in the footer.
+const sectionsEl = document.getElementById("sections");
+for (const fam of FAMILIES) {
+  const entries = REGISTRY.filter((e) => e.family === fam.key);
+  const head = document.createElement("div");
+  head.className = "sectionHead";
+  head.innerHTML = `<span class="sectionTitle">${fam.key}</span><span class="sectionDesc">${fam.desc}</span>`;
+  sectionsEl.appendChild(head);
+
+  if (!entries.length) {
+    const empty = document.createElement("div");
+    empty.className = "sectionEmpty";
+    empty.textContent = "Nothing here yet — see the roadmap below.";
+    sectionsEl.appendChild(empty);
+    continue;
+  }
+  const grid = document.createElement("div");
+  grid.className = "modeGrid";
+  for (const entry of entries) {
+    const card = document.createElement("button");
+    card.className = "card";
+    card.innerHTML = `
+      <span class="tag ${entry.family.toLowerCase()}">${entry.family.toUpperCase()}</span>
+      <span class="icon">${entry.icon}</span>
+      <span class="name">${entry.title}</span>
+      <span class="blurb">${entry.blurb}</span>
+      <span class="footNote"><span class="statusPill open">OPEN</span>Launch →</span>`;
+    card.addEventListener("click", () => openMode(entry));
+    grid.appendChild(card);
+  }
+  sectionsEl.appendChild(grid);
 }
+
+// Roadmap — grouped by family, dimmed, pointer-events:none (never tappable).
+const roadmapGroups = document.getElementById("roadmapGroups");
+for (const fam of FAMILIES) {
+  const items = ROADMAP.filter((r) => r.family === fam.key);
+  if (!items.length) continue;
+  const group = document.createElement("div");
+  group.className = "roadmapGroup";
+  const title = document.createElement("div");
+  title.className = "roadmapGroupTitle";
+  title.textContent = fam.key.toUpperCase();
+  group.appendChild(title);
+  const grid = document.createElement("div");
+  grid.className = "roadmapGrid";
+  for (const item of items) {
+    const cell = document.createElement("div"); // div, not button — nothing to tap
+    cell.className = "roadmapCard";
+    cell.innerHTML = `<div class="rmName">${item.title}</div><div class="rmNote">${item.note}</div>`;
+    grid.appendChild(cell);
+  }
+  group.appendChild(grid);
+  roadmapGroups.appendChild(group);
+}
+
+// The companion strip opens ✦ (never collapses it — tapping "Companion" should
+// always show the companion). Same path the FAB uses, no logic duplicated.
+document.getElementById("companionStrip").addEventListener("click", () => {
+  primeTTS();
+  if (cardState !== "open") openCard(cardState === "closed");
+});
 
 // ---------------------------------------------------------------- lifecycle
 async function openMode(entry) {

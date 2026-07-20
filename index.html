@@ -45,7 +45,7 @@
   .iconBtn { appearance: none; border: 1px solid var(--line); background: var(--panel); color: var(--text);
     border-radius: 999px; width: 36px; height: 36px; font-size: 16px; cursor: pointer; flex-shrink: 0;
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-  #cards { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modeGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .card { position: relative; text-align: left; border: 1px solid var(--line); border-radius: 16px;
     background: var(--panel); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     padding: 14px; cursor: pointer; color: var(--text); display: flex; flex-direction: column; gap: 8px;
@@ -54,21 +54,57 @@
   .card .icon { font-size: 26px; line-height: 1; }
   .card .name { font-weight: 700; font-size: 15px; }
   .card .blurb { color: var(--dim); font-size: 11.5px; line-height: 1.45; }
+  /* Family tag (Learn/Build/Live) — the ONE tag vocabulary, from VISION.md */
   .tag { position: absolute; top: 12px; right: 12px; font-family: var(--mono); font-size: 9px;
     font-weight: 700; letter-spacing: 0.1em; padding: 3px 8px; border-radius: 999px;
     color: var(--dim); border: 1px solid var(--line); }
-  .tag.physics    { color: var(--sensor); border-color: rgba(180, 140, 255, 0.45); }
-  .tag.astronomy  { color: var(--gold);   border-color: rgba(255, 209, 102, 0.45); }
-  .tag.learn      { color: var(--gold);   border-color: rgba(255, 209, 102, 0.45); }
-  .tag.assistant  { color: var(--good);   border-color: rgba(61, 220, 132, 0.45); }
-  .tag.coaching   { color: var(--accent); border-color: rgba(77, 163, 255, 0.45); }
-  .tag.perception { color: var(--warn);   border-color: rgba(255, 179, 71, 0.45); }
-  .card.soon { opacity: 0.45; cursor: default; }
-  .card .footNote { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; margin-top: auto; }
-  .card.soon .footNote { color: var(--warn); }
-  .card.ext .footNote { color: var(--gold); }
-  .card:not(.soon):not(.ext) .footNote { color: var(--accent); font-family: inherit; font-size: 11.5px;
-    font-weight: 600; letter-spacing: 0; }
+  .tag.learn { color: var(--gold);   border-color: rgba(255, 209, 102, 0.45); }
+  .tag.build { color: var(--accent); border-color: rgba(77, 163, 255, 0.45); }
+  .tag.live  { color: var(--good);   border-color: rgba(61, 220, 132, 0.45); }
+  /* Status pill — Open (usable now) vs Soon (roadmap) */
+  .statusPill { font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+    padding: 3px 8px; border-radius: 999px; flex-shrink: 0; }
+  .statusPill.open { color: var(--good); border: 1px solid rgba(61, 220, 132, 0.5); }
+  .statusPill.soon { color: var(--dim);  border: 1px solid var(--line); }
+  .card .footNote { margin-top: auto; display: flex; align-items: center; gap: 8px;
+    color: var(--accent); font-size: 11.5px; font-weight: 600; }
+
+  /* ---- family sections ---- */
+  #sections, #roadmapWrap { max-width: 560px; margin: 0 auto; }
+  .sectionHead { display: flex; align-items: baseline; gap: 8px; margin: 22px 2px 10px; }
+  .sectionTitle { font-size: 15px; font-weight: 700; }
+  .sectionDesc { font-size: 11.5px; color: var(--dim); }
+  .sectionEmpty { color: var(--dim); font-size: 12px; padding: 10px 12px; border: 1px dashed var(--line);
+    border-radius: 12px; }
+
+  /* ---- companion strip (top): the ✦ and everything it can do ---- */
+  #companionStrip { display: block; width: 100%; max-width: 560px; margin: 0 auto; text-align: left;
+    border: 1px solid rgba(77, 163, 255, 0.4); border-radius: 18px; padding: 14px;
+    background: linear-gradient(180deg, rgba(77,163,255,0.10), rgba(77,163,255,0.03));
+    color: var(--text); cursor: pointer; font-family: inherit; }
+  #companionStrip:active { transform: scale(0.99); }
+  .csHead { display: flex; align-items: center; gap: 10px; }
+  .csIcon { font-size: 24px; color: var(--accent); flex-shrink: 0; }
+  .csTitleWrap { flex: 1; min-width: 0; }
+  .csTitle { display: block; font-size: 16px; font-weight: 700; }
+  .csSub { display: block; font-size: 11.5px; color: var(--dim); margin-top: 2px; line-height: 1.4; }
+  .csPowers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+  .csPower { font-size: 11.5px; font-weight: 600; color: var(--text); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; }
+  .csHint { font-size: 10.5px; color: var(--dim); margin-top: 9px; }
+
+  /* ---- roadmap: dimmed + non-interactive on purpose ---- */
+  #roadmapWrap { opacity: 0.55; margin-top: 8px; }
+  .roadmapGroup { margin-bottom: 10px; }
+  .roadmapGroupTitle { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em;
+    color: var(--dim); margin: 0 2px 6px; }
+  .roadmapGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .roadmapCard { pointer-events: none; border: 1px dashed var(--line); border-radius: 12px;
+    padding: 9px 11px; background: rgba(255,255,255,0.015); }
+  .roadmapCard .rmName { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .roadmapCard .rmNote { font-size: 10.5px; color: var(--dim); line-height: 1.4; margin-top: 3px; }
+  .legacyLine { margin-top: 10px; font-size: 11px; color: var(--dim); }
+  .legacyNote { color: var(--dim); opacity: 0.8; }
   #home footer { max-width: 560px; margin: 22px auto 0; color: var(--dim); font-size: 11px;
     line-height: 1.6; text-align: center; }
   #home footer a { color: var(--dim); }
@@ -283,10 +319,43 @@
       <button class="iconBtn" id="settingsBtn" title="Settings" aria-label="Settings">⚙︎</button>
       <button class="iconBtn" id="aboutBtn" title="About" aria-label="About">ⓘ</button>
     </header>
-    <div id="cards"></div>
+    <button id="companionStrip">
+      <div class="csHead">
+        <span class="csIcon">✦</span>
+        <span class="csTitleWrap">
+          <span class="csTitle">Companion</span>
+          <span class="csSub">Your own AI, running on your machine — private and free</span>
+        </span>
+        <span class="statusPill open">LIVE</span>
+      </div>
+      <div class="csPowers">
+        <span class="csPower">💬 Ask anything</span>
+        <span class="csPower">👁 Look at this</span>
+        <span class="csPower">🎤 Talk hands-free</span>
+        <span class="csPower">🗒 Notes &amp; reminders</span>
+        <span class="csPower">🍳 Guide me</span>
+      </div>
+      <div class="csHint">Tap to open — or the ✦ button, from anywhere in any mode</div>
+    </button>
+
+    <div id="sections"></div>
+
+    <div id="roadmapWrap">
+      <div class="sectionHead">
+        <span class="sectionTitle">Roadmap</span>
+        <span class="sectionDesc">Not built yet — here so the plan stays visible</span>
+      </div>
+      <div id="roadmapGroups"></div>
+    </div>
+
     <footer>
       Open source · phone-first, glasses-ready ·
       <a href="https://github.com/alexgraz360/reality-engine">github.com/alexgraz360/reality-engine</a>
+      <div class="legacyLine">Legacy archive:
+        <a id="legacyLink" href="https://alexgraz360.github.io/physics-glasses/phase1/"
+           target="_blank" rel="noopener">standalone physics-glasses app ↗</a>
+        <span class="legacyNote">— its Pendulum &amp; Projectile are native modes above</span>
+      </div>
     </footer>
   </div>
 
