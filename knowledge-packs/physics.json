@@ -1,0 +1,50 @@
+{
+  "pack": "physics",
+  "label": "Physics reference",
+  "entries": [
+    {
+      "title": "The pendulum period formula",
+      "text": "For a simple pendulum swinging through small angles, the period is T = 2π√(L/g), where L is the length from the pivot to the centre of mass and g is gravitational acceleration. Rearranged to measure gravity: g = 4π²L/T². Notice what is absent — mass does not appear at all, so a heavy bob and a light one of the same length keep the same time. Period grows with the square root of length, so quadrupling the length only doubles the period. A pendulum about 1 metre long has a period near 2 seconds."
+    },
+    {
+      "title": "The small-angle approximation and its limits",
+      "text": "The tidy pendulum formula relies on sin θ ≈ θ, which is only accurate for small swings. The error grows with amplitude: at 10° the true period is about 0.2% longer than the formula predicts, at 20° roughly 0.8%, at 45° about 4%, and at 90° some 18%. So for an accurate measurement of g, keep the swing under about 15° and time many oscillations rather than one, dividing at the end — that spreads your reaction-time error across all of them."
+    },
+    {
+      "title": "Standard gravity and how it varies",
+      "text": "Standard gravity is defined as exactly 9.80665 m/s², usually rounded to 9.81. The real local value varies by about 0.5% across Earth's surface: roughly 9.780 at the equator and 9.832 at the poles, because Earth's rotation flings you outward slightly at the equator and the planet bulges there, putting you further from the centre. Altitude reduces it about 0.3 mm/s² per metre of elevation, and dense rock underfoot nudges it up — the basis of gravimetric prospecting."
+    },
+    {
+      "title": "Projectile motion basics",
+      "text": "Ignoring air resistance, a projectile's horizontal and vertical motions are independent. Horizontally it moves at constant velocity: x = v₀cos(θ)·t. Vertically it accelerates downward: y = v₀sin(θ)·t − ½gt². This is why a bullet fired horizontally and one dropped from the same height hit the ground together. The path traced is a parabola, and the object is momentarily moving purely horizontally at the apex — its vertical velocity passes through zero while horizontal velocity is unchanged."
+    },
+    {
+      "title": "Range, peak height and the 45° rule",
+      "text": "For a projectile launched and landing at the same height, range R = v₀²sin(2θ)/g and maximum height H = (v₀sin θ)²/2g. Because sin(2θ) peaks at 2θ = 90°, maximum range comes at a 45° launch angle in a vacuum. Complementary angles give equal range — 30° and 60° land in the same place, the steeper one with a higher, slower arc. Real throws optimise lower than 45°, typically 35-42°, because air drag punishes the longer flight time, and launching from shoulder height rather than the ground also shifts the optimum down."
+    },
+    {
+      "title": "Why real trajectories aren't parabolas",
+      "text": "Air resistance grows roughly with the square of speed, so a fast projectile is slowed hardest early in flight. The result is an asymmetric path: the descending half is steeper and shorter than the rising half, and range falls well short of the vacuum prediction. Spin adds the Magnus force — backspin generates lift and flattens the arc, topspin drives the ball down, and sidespin curves it. This is why a struck golf ball or a well-hit baseball carries far further than a drag-free parabola would suggest at those launch angles."
+    },
+    {
+      "title": "The kinematic equations",
+      "text": "For constant acceleration a: v = v₀ + at; x = x₀ + v₀t + ½at²; v² = v₀² + 2a(x − x₀); and average velocity = (v₀ + v)/2. The third is the one to reach for when you don't know the time and don't want to solve for it. For an object in free fall near Earth, a = g = 9.81 m/s² downward, so something dropped from rest falls about 4.9 m in the first second and 19.6 m in two — distance grows with the square of time, not linearly."
+    },
+    {
+      "title": "Terminal velocity",
+      "text": "A falling object speeds up until drag balances weight, after which it falls at a constant terminal velocity. It depends on mass, cross-sectional area and shape: roughly 55 m/s (200 km/h) for a belly-down skydiver, over 90 m/s in a head-down dive, about 9 m/s for a raindrop, and a fraction of a metre per second for a dust mote — which is why fine dust seems to hang in the air. A feather and a hammer genuinely do land together where there is no atmosphere, as Apollo 15 demonstrated on the Moon."
+    },
+    {
+      "title": "Conservation of energy in motion",
+      "text": "Without friction, the sum of kinetic energy (½mv²) and gravitational potential energy (mgh) stays constant. A pendulum trades them continuously: all potential at the extremes of its swing where it pauses, all kinetic at the bottom where it moves fastest. That gives v = √(2gh) for the speed at the bottom after falling a height h, independent of mass and of the path taken — a marble rolling down any smooth ramp arrives at the same speed. Real systems bleed energy to air resistance and friction, which is why a pendulum's swing decays."
+    },
+    {
+      "title": "Measuring speed from video",
+      "text": "A single camera records angles, not distances, so pixel motion only converts to real speed once you know the scale — hence calibrating against an object of known length. That scale is only valid in the plane where the reference object sat: something nearer the camera moves more pixels per metre and reads too fast, something further reads too slow. Motion toward or away from the lens is largely invisible, so it under-reads. Frame rate sets the time resolution and motion blur sets the position uncertainty, which is why bright light and a fast shutter improve tracking far more than more megapixels."
+    },
+    {
+      "title": "Simple harmonic motion",
+      "text": "Whenever a restoring force is proportional to displacement (F = −kx), the result is simple harmonic motion: a sinusoidal oscillation whose period is independent of amplitude. A mass on a spring gives T = 2π√(m/k), and a pendulum approximates it for small swings. That amplitude-independence — isochronism, noticed by Galileo watching a swinging lamp — is precisely what makes pendulums good clocks. Damping slowly shrinks the amplitude while barely changing the period, so a decaying swing still keeps time."
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "pack": "astronomy",
+  "label": "Astronomy reference",
+  "entries": [
+    {
+      "title": "The magnitude scale",
+      "text": "Apparent magnitude measures how bright an object looks from Earth, and the scale runs backwards: smaller numbers are brighter, and negative numbers are brighter still. Each step of 1 magnitude is a factor of about 2.512 in brightness, so 5 magnitudes is exactly 100×. The Sun is −26.7, the full Moon about −12.7, Venus at its best −4.6, Jupiter around −2.5, Sirius (the brightest night star) −1.46, and Polaris about +2.0. The naked-eye limit is roughly +6 under dark skies, but often only +3 or +4 in a city."
+    },
+    {
+      "title": "Why Mars looks red",
+      "text": "Mars is covered in dust rich in iron oxide — rust. Iron minerals on the surface oxidised over billions of years, and the fine dust is lofted into the atmosphere by winds and global dust storms, so both the ground and the sky carry that rusty tint. Through a telescope the colour reads more butterscotch or ochre than fire-engine red. Its brightness varies enormously with distance: near opposition Mars can outshine Jupiter, and at its most distant it is a modest orange dot."
+    },
+    {
+      "title": "What opposition means",
+      "text": "An outer planet is at opposition when Earth passes directly between it and the Sun, putting the planet opposite the Sun in our sky. That is the best time to observe it: the planet is at its closest and biggest, fully lit, and it rises at sunset, sits highest around midnight, and sets at sunrise — visible all night. Mars reaches opposition roughly every 26 months, Jupiter every 13 months, Saturn about every 12.5 months. Mercury and Venus, being inner planets, never reach opposition; their best appearances are at greatest elongation."
+    },
+    {
+      "title": "Greatest elongation for Mercury and Venus",
+      "text": "Because Mercury and Venus orbit inside Earth's orbit, they never stray far from the Sun in our sky. Greatest elongation is when a planet appears at its maximum angular separation from the Sun — up to about 28° for Mercury and 47° for Venus. At eastern elongation the planet is visible after sunset in the west (an evening star); at western elongation it rises before the Sun and is a morning star. These are the easiest windows to catch Mercury, which otherwise hides in twilight."
+    },
+    {
+      "title": "Dark adaptation and averted vision",
+      "text": "Your eyes need roughly 20-30 minutes in darkness to reach full sensitivity, as the pigment rhodopsin regenerates in the rods — and one glance at a phone screen resets much of it. Use a dim red light to preserve it. Averted vision is the other trick: look slightly to one side of a faint target instead of straight at it. The centre of your retina is packed with cones, which are colour-sensitive but poor in low light, while the rods that excel in darkness sit off-centre. Faint galaxies and nebulae often pop into view this way."
+    },
+    {
+      "title": "Choosing an observing night",
+      "text": "The Moon is the biggest variable: a full Moon washes out everything faint, so target the days around new Moon for galaxies, nebulae and meteor showers. Transparency (how clear the air is) matters for faint objects, while seeing (atmospheric steadiness) matters for high-magnification planetary detail — a hazy but steady night can be superb for Jupiter and poor for galaxies. Objects are sharpest when high in the sky, since near the horizon you look through far more atmosphere. Let a telescope cool to ambient temperature first."
+    },
+    {
+      "title": "Watching a meteor shower",
+      "text": "Meteor showers happen when Earth ploughs through debris left by a comet, and the meteors appear to radiate from one constellation, which gives the shower its name. You do not need a telescope or even to look at the radiant — lie back and take in as much sky as possible. Rates are usually best after midnight and toward dawn, when your side of Earth turns into the debris stream head-on. Published peak rates assume perfectly dark skies and a radiant overhead, so real counts are typically much lower. The Perseids (August) and Geminids (December) are the most reliable."
+    },
+    {
+      "title": "Jupiter and its moons",
+      "text": "Jupiter is the largest planet, about 11 Earth diameters across, and usually the second-brightest planet after Venus. Its four Galilean moons — Io, Europa, Ganymede and Callisto — are visible in binoculars as a shifting line of dots that noticeably changes arrangement within hours, which is exactly what convinced Galileo not everything orbits Earth. A small telescope shows the main cloud belts, and the Great Red Spot — a storm larger than Earth that has been shrinking for a century — when it rotates into view."
+    },
+    {
+      "title": "Saturn's rings",
+      "text": "Saturn's rings are not solid: they are countless particles of water ice and rock, from dust grains to house-sized chunks, spanning about 280,000 km while being only tens of metres thick in most places. Even a small telescope at 25-50× separates them from the planet's disc. Their apparent tilt changes over Saturn's 29.5-year orbit — sometimes wide open, and roughly every 15 years edge-on and nearly invisible from Earth. Titan, its largest moon, is usually the easiest to spot nearby."
+    },
+    {
+      "title": "Bright stars worth knowing",
+      "text": "Sirius in Canis Major is the brightest night star at magnitude −1.46, only 8.6 light-years away, and twinkles fiercely with colour when low because its light passes through thick atmosphere. Betelgeuse, the red-orange shoulder of Orion, is a red supergiant roughly 550 light-years off that varies visibly and will eventually explode as a supernova — spectacular from here but harmless. Polaris is not especially bright (about magnitude 2) but sits within a degree of the north celestial pole, so it barely moves while everything else wheels around it."
+    },
+    {
+      "title": "Why stars twinkle but planets don't",
+      "text": "Stars are so distant that they are effectively point sources, so pockets of turbulent air in our atmosphere bend that single thread of light around, making it flicker and shimmer in brightness and colour. Planets are close enough to present a tiny disc rather than a point — a bundle of many light paths whose wobbles average out, so they shine with a steady light. It is a genuinely useful field test: if it twinkles hard, it's a star; if it holds steady, you're probably looking at a planet."
+    },
+    {
+      "title": "Light-years and looking back in time",
+      "text": "A light-year is the distance light travels in a year, about 9.46 trillion kilometres. Because light takes time to reach us, every observation is a look into the past: the Moon as it was 1.3 seconds ago, the Sun 8.3 minutes ago, Betelgeuse around 550 years ago, and the Andromeda Galaxy some 2.5 million years ago. Nothing you see in the night sky is happening now, which is also why astronomers can study the early universe simply by looking far enough away."
+    }
+  ]
+}

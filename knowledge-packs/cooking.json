@@ -1,0 +1,62 @@
+{
+  "pack": "cooking",
+  "label": "Cooking reference",
+  "entries": [
+    {
+      "title": "Safe internal temperatures (USDA)",
+      "text": "Poultry — chicken and turkey, whole or ground — must reach 74 °C / 165 °F. Ground meats like beef, pork and lamb: 71 °C / 160 °F. Whole cuts of beef, pork, veal and lamb (steaks, chops, roasts): 63 °C / 145 °F followed by a 3-minute rest. Fish and shellfish: 63 °C / 145 °F, or until the flesh is opaque and flakes. Egg dishes: 71 °C / 160 °F. Leftovers and casseroles reheated to 74 °C / 165 °F. Measure at the thickest part, away from bone. Colour and clear juices are hints, not proof — a thermometer is the only reliable test of doneness for safety."
+    },
+    {
+      "title": "Steak doneness by internal temperature",
+      "text": "Pull steak from the heat about 3 °C below your target because it keeps cooking while resting. Rare 50-52 °C / 120-125 °F, medium-rare 54-57 °C / 130-135 °F, medium 60-63 °C / 140-145 °F, medium-well 65-68 °C / 150-155 °F, well done 71 °C+ / 160 °F+. Note that the USDA safe minimum for whole cuts is 63 °C / 145 °F with a 3-minute rest; anything rarer is a personal risk choice, and should be avoided for immunocompromised people, pregnant people, young children and the elderly."
+    },
+    {
+      "title": "Why resting meat matters",
+      "text": "Resting lets the muscle fibres relax and reabsorb juices that were driven toward the centre by heat. Cutting immediately spills that liquid onto the board and leaves the meat drier. Rest small cuts like steaks and chicken thighs about 5 minutes, larger roasts 15-20 minutes, tented loosely with foil. Internal temperature typically climbs another 2-5 °C during the rest — this is carryover cooking, and it's why you pull food slightly early."
+    },
+    {
+      "title": "The Maillard reaction and browning",
+      "text": "Browning is the Maillard reaction: amino acids and sugars reacting above roughly 140 °C / 285 °F to build hundreds of new flavour compounds. It needs a dry surface, because while water is present the surface cannot climb above 100 °C. That is why you pat meat dry before searing, don't crowd the pan (crowding traps steam), and leave food alone until a crust forms. Caramelisation is a different reaction — sugars browning on their own, starting around 160 °C."
+    },
+    {
+      "title": "Salting food properly",
+      "text": "Salt pasta water generously — roughly 1 tablespoon per 4 litres, so it tastes like mild seawater; it's the only chance to season the pasta itself. Salt meat ahead of time if you can: 40 minutes or more lets the salt dissolve, draw out moisture and be reabsorbed, seasoning throughout and drying the surface for browning. Salting immediately before cooking is fine too. The worst window is 3-30 minutes ahead, when moisture has been drawn out but not yet reabsorbed. Season in layers as you cook rather than all at the end, and taste."
+    },
+    {
+      "title": "Common ingredient substitutions",
+      "text": "Buttermilk: 1 cup milk plus 1 tablespoon lemon juice or vinegar, rested 5 minutes. Baking powder: 1 teaspoon equals 1/4 teaspoon baking soda plus 1/2 teaspoon cream of tartar. Egg in baking (binding): 1 tablespoon ground flaxseed in 3 tablespoons water, rested 5 minutes. Heavy cream for cooking: 3/4 cup milk plus 1/4 cup melted butter. Fresh herbs to dried: use one third the amount. One garlic clove: about 1/8 teaspoon garlic powder. Wine for deglazing: stock with a splash of vinegar."
+    },
+    {
+      "title": "Cooking oils and smoke points",
+      "text": "Match the oil to the heat. High heat (searing, stir-frying): refined avocado oil about 270 °C, ghee 250 °C, refined peanut or sunflower 230 °C, light refined olive oil 240 °C. Medium heat: butter about 175 °C (it browns and then burns — clarified butter goes much higher), extra-virgin olive oil about 190-200 °C. Once oil smokes it is breaking down, tasting acrid and releasing irritants: let the pan cool, wipe it out and start again rather than cooking in it."
+    },
+    {
+      "title": "Reading a pan's temperature",
+      "text": "Oil that shimmers and flows like water is around 175-200 °C — right for searing. Wisps of smoke mean you are at or past the oil's limit. A droplet of water that skitters across the surface instead of evaporating on contact indicates the Leidenfrost point, roughly 200 °C, which is a good visual cue for a hot, well-preheated pan. Preheat the empty pan first, then add oil: adding oil to a cold pan gives it time to break down."
+    },
+    {
+      "title": "Why low heat for scrambled eggs",
+      "text": "Egg proteins begin setting around 62 °C and turn rubbery and weepy if pushed much past 70 °C. Low heat with constant gentle stirring keeps curds small and creamy and gives you time to react. Pull the pan off the heat while the eggs still look slightly underdone — carryover heat finishes them in the 30 seconds it takes to plate. Adding fat (butter or a splash of cream) buffers the proteins and widens your margin for error."
+    },
+    {
+      "title": "Emulsifying a pasta sauce",
+      "text": "Starchy pasta water is the key ingredient. The dissolved starch helps fat and water bind into a glossy sauce that clings to the noodles instead of pooling in the bowl. Always reserve a mug of water before draining. Finish the pasta in the pan with the sauce and a splash of that water over heat, tossing hard: the agitation plus starch creates the emulsion. Add cheese off the heat or at low temperature so it melts smoothly rather than seizing into strings."
+    },
+    {
+      "title": "Blooming spices and aromatics",
+      "text": "Many spice compounds are fat-soluble, so warming ground spices in oil or butter for 30-60 seconds before adding liquids releases far more flavour than stirring them in later. Keep the heat moderate — spices scorch quickly and turn bitter. Same principle with garlic: cook it gently to pale gold. Browned garlic tastes acrid, and because thin slices burn in seconds, garlic usually goes into a pan after onions, not before."
+    },
+    {
+      "title": "Deglazing a pan",
+      "text": "The browned bits stuck to the pan after searing — the fond — are concentrated flavour. After removing the meat, pour in a splash of liquid (wine, stock, water) while the pan is still hot and scrape with a wooden spoon as it bubbles; the bits dissolve into the liquid. Reduce to concentrate, then finish off the heat with a knob of cold butter swirled in for a glossy pan sauce. Avoid deglazing an empty screaming-hot dry pan with a large volume of cold liquid, which can warp thin pans."
+    },
+    {
+      "title": "Kitchen safety basics",
+      "text": "Wash hands, boards and knives after raw poultry or meat, and keep raw proteins away from anything eaten uncooked. A sharp knife is safer than a dull one because it doesn't skid; cut on a board steadied by a damp towel and tuck your fingertips back into a claw. For an oil fire, smother it — lid or baking sheet, kill the heat — never water. Dry your food and keep your face back when adding food to hot oil to limit splatter, and keep pan handles turned inward."
+    },
+    {
+      "title": "Judging doneness without cutting",
+      "text": "A thermometer is the reliable answer, but useful secondary cues: chicken thighs feel firm and springy rather than squishy, and the meat pulls slightly from the bone. Fish flakes when gently twisted with a fork and turns from translucent to opaque. Steak firmness roughly tracks doneness — rare feels like the fleshy base of a relaxed thumb, well done like a clenched one. Treat all of these as hints to confirm with a probe, especially for poultry, pork and anything served to vulnerable people."
+    }
+  ]
+}

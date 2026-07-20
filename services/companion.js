@@ -18,6 +18,7 @@
 // Fast-follow (not required for P0): voice input via the Web Speech API.
 
 import storage from "./storage.js";
+import knowledge from "./knowledge.js";
 
 const SYSTEM_PROMPT =
   "You are the Reality Engine companion — a knowledgeable, concise assistant for astronomy, " +
@@ -34,7 +35,11 @@ const SYSTEM_PROMPT =
   "{\"action\":\"delete_note\",\"match\":\"text to match\"} · " +
   "{\"action\":\"add_reminder\",\"text\":\"...\",\"when\":\"YYYY-MM-DDTHH:MM\"} (local time; " +
   "resolve relative times like 'in 10 minutes' or 'at 6pm' using the current date/time " +
-  "provided) · {\"action\":\"list_reminders\"} · {\"action\":\"delete_reminder\",\"match\":\"...\"}. " +
+  "provided) · {\"action\":\"list_reminders\"} · {\"action\":\"delete_reminder\",\"match\":\"...\"} · " +
+  "{\"action\":\"remember\",\"text\":\"the fact to keep\",\"topic\":\"short label\"} when the user tells " +
+  "you to remember a lasting fact or preference (\"remember that my oven runs hot\") — that goes into " +
+  "their knowledge library and comes back to you in future answers, unlike a note, which is just a " +
+  "list item they read themselves. " +
   "The app shows the user a confirmation before anything is saved or deleted, so never claim " +
   "an action is already done — say what you're proposing. Never emit an action block the user " +
   "didn't clearly ask for; for everything else reply normally with no JSON and no code blocks. " +
@@ -182,9 +187,24 @@ export const companion = {
     const pad = (v) => String(v).padStart(2, "0");
     const nowLine = `Current local date/time: ${now.toDateString()} ${pad(now.getHours())}:${pad(now.getMinutes())} ` +
       `(${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())})`;
+    // Knowledge Library: retrieve relevant reference material for this question.
+    // Best-effort — returns [] if the bridge is unreachable or nothing scores
+    // above the relevance threshold, in which case the model answers unaided.
+    const found = await knowledge.search(prompt, { context, topK: 3 });
+    const reference = found.length ? [{
+      role: "system",
+      content:
+        "Reference notes from the user's own knowledge library — these are trusted and " +
+        "may be more current or specific than your training. Use them when they answer " +
+        "the question, and mention which note it came from (e.g. \"per your cooking " +
+        "reference\"). If they don't cover it, answer normally from your own knowledge " +
+        "and don't pretend they did.\n\n" + knowledge.format(found),
+    }] : [];
+
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
       ...turns,
+      ...reference,
       {
         role: "user",
         content: nowLine + "\n" +
@@ -215,7 +235,10 @@ export const companion = {
       if (!data || typeof data.text !== "string" || !data.text) {
         return { ok: false, source: "error", text: "The bridge returned an empty answer — try again." };
       }
-      return { ok: true, source: "local", text: data.text.trim(), stats: data.stats || null };
+      return {
+        ok: true, source: "local", text: data.text.trim(), stats: data.stats || null,
+        sources: found.map((f) => ({ pack: f.packLabel || f.pack, title: f.title, score: f.score })),
+      };
     } catch (err) {
       const timedOut = err && err.name === "AbortError";
       return {
