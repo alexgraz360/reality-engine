@@ -29,6 +29,12 @@ const REGISTRY = [
     load: () => import("./modes/projectile.js"),
   },
   {
+    id: "guide", title: "Guide · cook with me", family: "Learn", icon: "🍳",
+    permissions: ["camera", "mic"],
+    blurb: "Cook a dish hands-free: one spoken step at a time, voice commands, step timers, and an on-demand look check.",
+    load: () => import("./modes/guide.js"),
+  },
+  {
     id: "astronomy", title: "Astronomy", family: "Learn", icon: "🔭",
     permissions: ["camera", "motion", "orientation", "geolocation"],
     blurb: "Point at the sky — planets, stars, time travel, events. Native mode: the ✦ companion knows what you're looking at.",
@@ -66,7 +72,16 @@ const modeTag = document.getElementById("modeTag");
 
 let active = null; // { mod, entry }
 
-const services = { sensors, overlay, storage, companion };
+const services = {
+  sensors, overlay, storage, companion,
+  actions: localActions, // notes/reminders layer (Guide timers reuse it)
+  // Speak through the shell's normal voice path (Piper/system, session-guarded).
+  speak(text) {
+    const willSpeak = speakReply(String(text || ""), () => setStatus("idle"));
+    if (willSpeak) setStatus("speaking");
+    return willSpeak;
+  },
+};
 
 // ---------------------------------------------------------------- home cards
 const cardsEl = document.getElementById("cards");
@@ -803,6 +818,37 @@ async function askCompanion() {
   stopSpeaking();      // a new question interrupts the previous answer
   primeTTS();          // in case this Ask is the session's first companion gesture
   if (pendingAction) { hideActionConfirm(); transcriptNote("Previous action cancelled."); }
+
+  // Active-mode command hook: a mode may handle the input itself ("next",
+  // "start the timer", "how does this look?") — instant, local, no model
+  // round-trip. Returning null/undefined falls through to the companion.
+  if (active && active.mod && typeof active.mod.handleCommand === "function") {
+    let handled = null;
+    try { handled = active.mod.handleCommand(question); } catch (e) { console.error("mode command failed:", e); }
+    if (handled) {
+      asking = true;
+      document.getElementById("companionAskBtn").disabled = true;
+      input.value = "";
+      const isAsync = typeof handled.then === "function";
+      setStatus(isAsync ? "looking" : "thinking");
+      if (isAsync) renderTranscript(true);
+      try {
+        const text = String((await handled) || "Done.");
+        handleAssistantReply(question, { ok: true, text, stats: null });
+      } catch (err) {
+        console.error("mode command failed:", err);
+        renderTranscript(false);
+        transcriptNote("That didn't work: " + (err && err.message || err));
+        setStatus("idle");
+      } finally {
+        asking = false;
+        document.getElementById("companionAskBtn").disabled = false;
+        refreshFabStatus();
+      }
+      return;
+    }
+  }
+
   const context = activeContext(); // re-read at ask time — freshest reading
   asking = true;
   document.getElementById("companionAskBtn").disabled = true;

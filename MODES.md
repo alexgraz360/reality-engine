@@ -28,6 +28,12 @@ export default {
   // ---- the forward-looking hook ----
   getContext() { return ""; },    // short natural-language string of what the user is
                                   // doing/seeing right now — the AI companion reads this
+
+  // ---- OPTIONAL: voice/typed command hook ----
+  handleCommand(text) {},         // the shell offers every companion input here first;
+                                  // return a string (or Promise<string>) to handle it
+                                  // locally — it is shown/spoken through the normal
+                                  // path — or null to let the model answer instead
 };
 ```
 
@@ -41,7 +47,9 @@ export default {
 | `ctx.services.sensors` | permission-gated camera / mic / motion / orientation / GPS (iOS gesture handling included) |
 | `ctx.services.overlay` | HUD/canvas helpers (`createCanvas`, `fit2d`, `cssVar`) |
 | `ctx.services.storage` | namespaced local persistence — use `storage.scope(yourId)` |
-| `ctx.services.companion` | the AI companion — `ask(prompt, context)` answers via the user's own local-model bridge if configured in Settings (see `services/companion.js` and `GLASSES.md`) |
+| `ctx.services.companion` | the AI companion — `ask(prompt, context)` answers via the user's own local-model bridge if configured in Settings (see `services/companion.js` and `GLASSES.md`); also `vision(imageBase64, prompt)` |
+| `ctx.services.actions` | local notes & reminders (`addReminder` powers mode timers — they fire via the shell's existing ticker) |
+| `ctx.services.speak(text)` | speak through the shell's voice path (Piper or system, honors the Speak toggle) |
 
 Always get sensors through `ctx.services.sensors`, never raw browser APIs: the service
 owns iOS's user-gesture permission dance, fans events out, and lets the shell

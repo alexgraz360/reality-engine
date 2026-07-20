@@ -1,0 +1,65 @@
+{
+  "recipes": [
+    {
+      "id": "garlic-butter-pasta",
+      "title": "Garlic Butter Pasta",
+      "servings": 2,
+      "ingredients": ["200 g spaghetti", "4 tbsp butter", "4 garlic cloves, thinly sliced", "1/4 tsp chili flakes (optional)", "salt", "black pepper", "30 g parmesan, grated", "small handful parsley, chopped"],
+      "steps": [
+        { "text": "Bring a large pot of water to a rolling boil, then salt it generously.", "tip": "It should taste like the sea — about 1 tbsp of salt." },
+        { "text": "Add 200 g spaghetti and cook 1 minute less than the package says.", "timerSeconds": 540, "tip": "Stir once early so nothing sticks." },
+        { "text": "While it cooks: melt 4 tbsp butter in a large pan over medium-low heat." },
+        { "text": "Add the sliced garlic and chili flakes; cook gently until just golden.", "donenessCue": "garlic slices pale gold at the edges, not brown", "timerSeconds": 120, "tip": "Brown garlic turns bitter — low and slow." },
+        { "text": "Scoop out a mug of pasta water, then drain the pasta." },
+        { "text": "Toss the pasta in the pan with a splash of pasta water until glossy.", "donenessCue": "sauce looks silky and clings to the strands" },
+        { "text": "Off the heat: stir in the parmesan, parsley, and plenty of black pepper." },
+        { "text": "Taste, adjust salt, and serve straight away." }
+      ]
+    },
+    {
+      "id": "seared-chicken-thighs",
+      "title": "Pan-Seared Chicken Thighs",
+      "servings": 2,
+      "ingredients": ["4 boneless chicken thighs", "1 tsp salt", "1/2 tsp black pepper", "1 tsp paprika", "1 tbsp neutral oil", "2 tbsp butter", "3 garlic cloves, crushed", "a few sprigs of thyme (optional)"],
+      "steps": [
+        { "text": "Pat the chicken thighs very dry with paper towels.", "tip": "Dry skin = real browning. Wash hands after handling raw chicken." },
+        { "text": "Season both sides with the salt, pepper, and paprika." },
+        { "text": "Heat 1 tbsp oil in a heavy pan over medium-high until it shimmers.", "donenessCue": "oil shimmering and flowing easily, just before smoking" },
+        { "text": "Lay the thighs in smooth-side down and don't move them for 6 minutes.", "timerSeconds": 360, "donenessCue": "deep golden-brown crust on the underside", "tip": "Moving them early tears the crust. Watch for oil splatter." },
+        { "text": "Flip, add the butter, garlic, and thyme, and cook 6 more minutes.", "timerSeconds": 360, "donenessCue": "second side golden, butter foaming but not burning" },
+        { "text": "Spoon the foaming butter over the chicken for the last minute." },
+        { "text": "Check doneness with a thermometer: 74 °C / 165 °F at the thickest part.", "donenessCue": "juices run clear, no pink at the thickest part — but the thermometer is the real test", "tip": "Color is a hint, temperature is the answer." },
+        { "text": "Rest the thighs on a plate for 5 minutes before serving.", "timerSeconds": 300, "tip": "Resting keeps the juices in the meat." }
+      ]
+    },
+    {
+      "id": "soft-scrambled-eggs",
+      "title": "Soft Scrambled Eggs",
+      "servings": 1,
+      "ingredients": ["3 eggs", "1 tbsp butter", "pinch of salt", "black pepper", "buttered toast, to serve"],
+      "steps": [
+        { "text": "Crack 3 eggs into a bowl and beat until fully blended, with a pinch of salt." },
+        { "text": "Melt 1 tbsp butter in a nonstick pan over LOW heat.", "tip": "Low heat is the whole secret." },
+        { "text": "Pour in the eggs and wait about 20 seconds before touching them.", "timerSeconds": 20 },
+        { "text": "Stir slowly and constantly with a spatula, scraping the bottom.", "donenessCue": "soft creamy curds forming, still slightly glossy" },
+        { "text": "Pull the pan off the heat while the eggs still look a little underdone.", "donenessCue": "just-set curds with a gentle shine, not dry or browned", "tip": "They finish cooking off the heat. Eggs should reach 71 °C / 160 °F for safety if that matters for you." },
+        { "text": "Season with pepper and serve immediately on toast." }
+      ]
+    },
+    {
+      "id": "grilled-cheese",
+      "title": "Crispy Grilled Cheese",
+      "servings": 1,
+      "ingredients": ["2 slices of bread", "2 tbsp butter, softened", "70 g cheddar (or your melty cheese), grated"],
+      "steps": [
+        { "text": "Butter one side of each bread slice, edge to edge.", "tip": "Butter the BREAD, not the pan — even browning." },
+        { "text": "Heat a pan over medium-low. Add one slice butter-side down and pile on the cheese." },
+        { "text": "Top with the second slice, butter-side up." },
+        { "text": "Cook about 3 minutes until the underside is deeply golden.", "timerSeconds": 180, "donenessCue": "underside evenly golden-brown, cheese starting to melt at the edges" },
+        { "text": "Flip carefully and cook about 2 minutes more.", "timerSeconds": 120, "donenessCue": "both sides golden, cheese fully melted and stretchy" },
+        { "text": "Press gently with the spatula for the last 30 seconds.", "timerSeconds": 30 },
+        { "text": "Rest for a minute, slice diagonally, and eat while it's stretchy." }
+      ]
+    }
+  ]
+}
