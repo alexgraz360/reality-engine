@@ -10,12 +10,16 @@
 //   { id, label,
 //     async ready(),                     // load once; return true if usable
 //     teams(): string[],                 // team codes it knows
-//     lookup(team, situation): object|null  // raw rows for this team+situation
+//     lookup(team, situation): object|null,        // OFFENSE rows for this team
+//     lookupDefense(team, situation): object|null   // DEFENSE rows (optional)
 //   }
 // situation: { down, distance, zone }  (distance in yards; zone = app zone id)
 //
 // All data is vendored/offline — no network, no secrets. Honesty: these are
-// season-to-date historical tendencies, not a prediction.
+// season-to-date historical tendencies, not a prediction. Public data has NO
+// coverage labels (Cover 2/3 is proprietary), so coverage is always reported
+// as n/a and never inferred; "pressure" is QB hits + sacks per dropback, the
+// public proxy — charted hurries are not available.
 
 const DATA_BASE = new URL("../data/football/", import.meta.url);
 
@@ -69,6 +73,23 @@ const vendoredProvider = (() => {
         zone: sit.zone, zoneCell: t.fieldZone[sit.zone], leagueZone: lg && lg.fieldZone[sit.zone],
         thirdDown: t.thirdDown, redZone: t.redZone,
         personnel: t.personnel, formation: t.formation,
+        fingerprint: t.fingerprint,
+      };
+    },
+    lookupDefense(team, sit) {
+      if (!teamsData || !team || !teamsData.teams[team] || !teamsData.teams[team].defense) return null;
+      const D = teamsData.teams[team].defense;
+      const lgD = leagueData && leagueData.league.defense;
+      const ddKey = `${sit.down}|${distBucket(sit.distance)}`;
+      return {
+        source: this.id, meta: teamsData.meta, team,
+        overall: D.overall, leagueOverall: lgD && lgD.overall,
+        ddKey, dd: D.downDistance[ddKey], leagueDd: lgD && lgD.downDistance[ddKey],
+        blitzDD: D.blitzByDD ? D.blitzByDD[ddKey] : null,
+        leagueBlitzDD: lgD && lgD.blitzByDD ? lgD.blitzByDD[ddKey] : null,
+        zone: sit.zone, zoneCell: D.fieldZone[sit.zone], leagueZone: lgD && lgD.fieldZone[sit.zone],
+        thirdDown: D.thirdDown, redZone: D.redZone,
+        fingerprint: teamsData.teams[team].fingerprint,
       };
     },
   };
@@ -99,6 +120,17 @@ export const footballData = {
     }
     return out;
   },
+  // Same overlay contract for the DEFENDING team. Providers that don't do
+  // defense simply omit lookupDefense and are skipped.
+  getDefenseTendencies(team, situation) {
+    let out = null;
+    for (const p of PROVIDERS) {
+      if (typeof p.lookupDefense !== "function") continue;
+      const rows = p.lookupDefense(team, situation);
+      if (rows) out = out ? { ...out, ...rows, sources: [...(out.sources || []), p.id] } : { ...rows, sources: [p.id] };
+    }
+    return out;
+  },
 
   // ---- formatting helpers (kept here so both prompt + card stay consistent) ----
 
@@ -114,8 +146,43 @@ export const footballData = {
     if (tend.thirdDown && tend.thirdDown.n) L.push(`- Third down overall: converts ${pct(tend.thirdDown.convRate)}, passes ${pct(tend.thirdDown.passRate)}.`);
     if (tend.personnel) L.push(`- Personnel usage: ${topGroupings(tend.personnel, 3).map(([g, r]) => `${g} personnel ${pct(r)}`).join(", ")}.`);
     else L.push("- Personnel/formation: n/a for these seasons (participation data unavailable).");
-    L.push("Cite the specific numbers and how they compare to league average; frame as what this team USUALLY does here, never a guaranteed call.");
+    const fp = tend.fingerprint && tend.fingerprint.offense;
+    if (fp) L.push(`- Scheme fingerprint (data-derived): shotgun ${pct(fp.shotgun)}, early-down pass ${pct(fp.earlyDownPass)}, ` +
+      `no-huddle ${pct(fp.noHuddle)}, base personnel ${fp.topPersonnel || "n/a"}, EPA/play ${signed(fp.epa)}.`);
+    L.push("Cite the specific numbers. Every '(league X%)' is the LEAGUE average — compare the team to that, " +
+      "not to its own rate. Frame as what this team USUALLY does here, never a guaranteed call.");
     return L.join("\n");
+  },
+
+  // The DEFENDING team's block for the prompt, so the read can say "the Giants
+  // blitz 37%, well above average". Coverage is explicitly n/a, never invented.
+  formatDefenseForPrompt(d) {
+    if (!d) return "";
+    const L = [];
+    const o = d.overall, lo = d.leagueOverall;
+    L.push(`Real tendency data for the ${d.team} DEFENSE (same source and seasons):`);
+    L.push(`- Pressure identity: blitz ${pct(o.blitzRate)} of dropbacks (league ${pct(lo && lo.blitzRate)}), ` +
+      `pressure ${pct(o.pressureRate)} (league ${pct(lo && lo.pressureRate)}), sack ${pct(o.sackRate)}, ` +
+      `avg box ${o.boxAvg == null ? "n/a" : o.boxAvg.toFixed(1)}.`);
+    if (d.blitzDD) L.push(`- Blitz on this exact down & distance (${d.ddKey.replace("|", " and ")}): ` +
+      `${pct(d.blitzDD.blitz)} (league ${pct(d.leagueBlitzDD && d.leagueBlitzDD.blitz)}), n=${d.blitzDD.n}.`);
+    if (d.dd) L.push(`- Allowed here: opponents pass ${pct(d.dd.passFaced)}, EPA allowed ${signed(d.dd.epaAllowed)}, ` +
+      `success allowed ${pct(d.dd.successAllowed)}, n=${d.dd.n}.`);
+    if (d.thirdDown && d.thirdDown.n) L.push(`- Third-down stop rate: ${pct(d.thirdDown.stopRate)}.`);
+    if (d.redZone && d.redZone.n) L.push(`- Red-zone defense: EPA allowed ${signed(d.redZone.epaAllowed)}, n=${d.redZone.n}.`);
+    L.push("- Coverage shells (Cover 1/2/3 etc.): n/a — not in public data. Do NOT state what coverage they run as fact.");
+    return L.join("\n");
+  },
+
+  // Two or three defense numbers for the card.
+  defenseCardLines(d) {
+    if (!d) return [];
+    const o = d.overall;
+    const lines = [`${d.team} D: blitz ${pct(o.blitzRate)} · pressure ${pct(o.pressureRate)} · sack ${pct(o.sackRate)}`];
+    if (d.blitzDD) lines.push(`Blitz on ${d.ddKey.replace("|", " & ")}: ${pct(d.blitzDD.blitz)} · league ${pct(d.leagueBlitzDD && d.leagueBlitzDD.blitz)}`);
+    if (d.thirdDown && d.thirdDown.stopRate != null) lines.push(`3rd-down stop: ${pct(d.thirdDown.stopRate)}`);
+    lines.push("Coverage: n/a (public data)");
+    return lines;
   },
 
   // A couple of raw numbers to show on the card (readable without the model).

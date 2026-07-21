@@ -48,6 +48,10 @@ function tendencies() {
   if (!dataReady || !sit.offense) return null;
   return footballData.getTendencies(sit.offense, dataSituation());
 }
+function defenseTendencies() {
+  if (!dataReady || !sit.defense) return null;
+  return footballData.getDefenseTendencies(sit.defense, dataSituation());
+}
 
 export default {
   id: "football",
@@ -134,6 +138,7 @@ export default {
   // ---- verification hooks ----
   _state: () => ({ situation: { ...sit }, dataReady }),
   _tendencies: () => tendencies(),
+  _defenseTendencies: () => defenseTendencies(),
   _systemContext: () => buildSystemContext(),
   _scan: (b64) => runScan(b64),                 // drive a scan without the camera
   _applyScoreboard: (p) => applyScoreboard(p),  // field-mapping check
@@ -270,18 +275,29 @@ function buildSystemContext() {
     "CRITICAL HONESTY: you CANNOT see the broadcast; you reason only from the situation the user gives you. " +
     "Frame everything as general tendencies and what to watch for — never as a guaranteed play call or insider info. " +
     "No team-specific or proprietary claims.";
-  const lines = relevantReference();
+  // When we have real team numbers they carry the read, so trim the generic
+  // reference lines — a leaner prompt also generates noticeably faster on CPU.
+  const haveTeamData = !!(tendencies() || defenseTendencies());
+  const lines = relevantReference().slice(0, haveTeamData ? 2 : 5);
   if (lines.length) s += "\n\nRelevant reference for this situation:\n" + lines.join("\n");
   // Real per-team tendency numbers (vendored public data) when a team is picked —
   // this is what turns a generic read into "they pass 70% here, above league".
   const tend = tendencies();
   if (tend) s += "\n\n" + footballData.formatForPrompt(tend);
+  const dTend = defenseTendencies();
+  if (dTend) s += "\n\n" + footballData.formatDefenseForPrompt(dTend);
+  if (tend || dTend) {
+    s += "\n\nUSING THE DATA: the numbers above are current and take precedence for anything specific. " +
+      "You may add brief scheme or coordinator flavour from your own knowledge, but you MUST label it as " +
+      "general and possibly out of date (staffs and personnel change), and never state a team's coverage " +
+      "shell or play call as fact — public data has no coverage labels.";
+  }
   return s;
 }
 
 // ---------------------------------------------------------------- the read
 async function generateRead() {
-  const hasData = !!tendencies();
+  const hasData = !!tendencies() || !!defenseTendencies();
   const prompt =
     "Give a pre-snap read for the current situation as three short, speakable parts, one sentence each, " +
     "in this order and labeled exactly:\n" +
@@ -289,7 +305,9 @@ async function generateRead() {
     "Defense: what they may show and do (a likely coverage or pressure in this situation).\n" +
     "Watch: one matchup or tell to watch for.\n" +
     (hasData
-      ? "You have this team's real tendency numbers — cite at least one specific figure and how it compares to league (e.g. \"they pass 97% here, well above league\") so the user sounds informed. "
+      ? "You have real tendency numbers for these teams — cite at least one specific figure with its league comparison " +
+        "(e.g. \"they pass 97% here, well above league\"), and if defensive numbers are present cite one of those too " +
+        "(e.g. \"the Giants blitz 37% here, well above average\") so both sides are team-specific. "
       : "") +
     "Keep the whole thing short enough to say out loud in a room. General tendencies only — you cannot see the play.";
   try {
@@ -405,7 +423,7 @@ function renderPanel() {
         <div class="fbRow ${hit("offense")} ${hit("defense")}" style="margin-top:8px;"><span class="fbLbl">Matchup</span><span class="fbSeg">
           ${teamSelect("offense", sit.offense, "Offense")}
           <span style="color:var(--dim); font-size:12px;">vs</span>
-          ${teamSelect("defense", sit.defense, "Defense (opt.)")}
+          ${teamSelect("defense", sit.defense, "Defense")}
         </span></div>
 
         <div style="border:1px solid var(--line); border-radius:14px; background:var(--panel-solid); padding:12px; margin-top:8px;">
@@ -484,21 +502,25 @@ function renderStatCard() {
   const host = els.statCard;
   if (!host) return;
   const tend = tendencies();
-  if (!tend) {
+  const dTend = defenseTendencies();
+  if (!tend && !dTend) {
     host.innerHTML = dataReady
-      ? '<div style="font-size:11px; color:var(--dim); margin-top:10px;">Pick the offense on the field to see real tendency numbers here.</div>'
+      ? '<div style="font-size:11px; color:var(--dim); margin-top:10px;">Pick the teams to see real tendency numbers here.</div>'
       : "";
     return;
   }
-  const lines = footballData.cardLines(tend);
-  const seasons = tend.meta.seasons.join("–");
+  const seasons = (tend || dTend).meta.seasons.join("–");
+  const block = (label, colour, lines) => `
+      <div style="font-family:var(--mono); font-size:10px; letter-spacing:0.08em; color:${colour}; margin:0 0 6px;">${label}</div>
+      ${lines.map((l) => `<div style="font-size:12px; color:var(--text); line-height:1.55;">${l}</div>`).join("")}`;
   host.innerHTML = `
     <div style="border:1px solid rgba(255,209,102,0.35); border-radius:12px; background:rgba(255,209,102,0.05); padding:10px 12px; margin-top:10px;">
-      <div style="font-family:var(--mono); font-size:10px; letter-spacing:0.08em; color:var(--gold); margin-bottom:6px;">
-        ${tend.team} TENDENCIES · ${seasons}</div>
-      ${lines.map((l) => `<div style="font-size:12px; color:var(--text); line-height:1.55;">${l}</div>`).join("")}
+      ${tend ? block(`${tend.team} OFFENSE · ${seasons}`, "var(--gold)", footballData.cardLines(tend)) : ""}
+      ${tend && dTend ? '<div style="height:1px; background:var(--line); margin:8px 0;"></div>' : ""}
+      ${dTend ? block(`${dTend.team} DEFENSE · ${seasons}`, "var(--accent)", footballData.defenseCardLines(dTend)) : ""}
       <div style="font-size:10px; color:var(--dim); margin-top:7px; line-height:1.4;">
-        Tendencies from public data (nflverse), season-to-date — not a prediction.</div>
+        Tendencies from public data (nflverse), season-to-date — not a prediction.
+        Coverage shells aren't in public data.</div>
     </div>`;
 }
 
