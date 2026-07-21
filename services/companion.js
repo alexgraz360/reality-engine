@@ -261,7 +261,12 @@ export const companion = {
       const r = await fetch(endpoint + "/chat", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: "Bearer " + token },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({
+          messages,
+          // Optional hard cap on reply length (the bridge clamps it) — used by
+          // short "add colour" calls so they can't ramble on a slow local model.
+          ...(Number.isInteger(opts.maxTokens) ? { maxTokens: opts.maxTokens } : {}),
+        }),
         signal: ctrl.signal,
       });
       if (r.status === 401) {

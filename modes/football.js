@@ -21,6 +21,11 @@ let dataReady = false;        // vendored tendency data loaded
 let scanning = false;         // scoreboard OCR in flight
 let justFilled = new Set();   // fields the last scan filled (for highlighting)
 let scanNote = "";            // status/honesty line under the scan button
+let lastInstant = null;       // last instant read { line, numbers }
+let watching = false;         // Watch mode on
+let watchStream = null, watchTimer = 0, wakeLock = null;
+let lastSnapKey = "";         // down|distance of the last fired read (debounce)
+let watchNote = "";
 
 const ZONES = [
   { id: "backed-up", label: "Backed up" },
@@ -74,8 +79,13 @@ export default {
   },
 
   async start() {},
-  stop() {},
-  teardown() { els = {}; root = null; ref = null; sit = null; },
+  // The shell calls stop() when the tab/app is hidden — release the camera and
+  // the wake lock rather than filming the user's pocket.
+  stop() { if (watching) stopWatch("Watch paused — tap Watch to resume."); },
+  teardown() {
+    if (watching) stopWatch("");
+    els = {}; root = null; ref = null; sit = null; lastInstant = null;
+  },
 
   // Situation string that grounds every companion answer.
   getContext() { return buildContext(); },
@@ -141,12 +151,103 @@ export default {
   _defenseTendencies: () => defenseTendencies(),
   _systemContext: () => buildSystemContext(),
   _scan: (b64) => runScan(b64),                 // drive a scan without the camera
+  _instantRead: () => instantRead(),            // fast path, no model
+  _lastInstant: () => lastInstant,
+  _watching: () => watching,
+  _forceWatch: (on) => { watching = on; if (!on) { clearInterval(watchTimer); watchTimer = 0; } lastSnapKey = ""; },
+  _watchTick: () => watchTick(),                // drive one tick in tests
+  _watchState: () => ({ watching, lastSnapKey, intervalMs: WATCH_MS }),
   _applyScoreboard: (p) => applyScoreboard(p),  // field-mapping check
   _justFilled: () => [...justFilled],
   _set: (partial) => { Object.assign(sit, partial); persist(); if (els.panel) renderPanel(); },
   _read: () => generateRead(),
   _reference: () => ref,
 };
+
+// ---------------------------------------------------------------- Watch mode
+// Point the phone at the screen and it calls out each new down by itself: a live
+// camera frame every WATCH_MS to /scoreboard (cheap OCR), and ONLY when the
+// down/distance actually changes does it update the panel and speak the INSTANT
+// read. The model is never called per play. Foreground-only by nature — the
+// always-on version is what the glasses will do natively.
+const WATCH_MS = 6000;   // 10 ticks/min, inside the /scoreboard budget
+
+async function toggleWatch() {
+  if (watching) { stopWatch("Watch off."); return; }
+  try {
+    watchStream = await svc.sensors.requestCamera({
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+  } catch (err) {
+    setWatchNote("Camera unavailable — Watch needs the camera. Manual Scan and typing still work.");
+    return;
+  }
+  watching = true;
+  lastSnapKey = "";
+  els.watchVideo.srcObject = watchStream;
+  els.watchVideo.style.display = "block";
+  try { await els.watchVideo.play(); } catch (e) {}
+  try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) { wakeLock = null; }
+  setWatchNote("Watching — point at the screen. I'll call out each new down.");
+  watchTimer = setInterval(watchTick, WATCH_MS);
+  watchTick(); // first look immediately
+  renderWatchUI();
+}
+
+function stopWatch(note) {
+  watching = false;
+  clearInterval(watchTimer); watchTimer = 0;
+  if (watchStream) { svc.sensors.releaseStream(watchStream); watchStream = null; }
+  if (els.watchVideo) { els.watchVideo.srcObject = null; els.watchVideo.style.display = "none"; }
+  if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+  setWatchNote(note || "");
+  renderWatchUI();
+}
+
+let watchBusy = false;
+async function watchTick() {
+  if (!watching || watchBusy) return;   // never stack requests
+  const v = els.watchVideo;
+  if (!v || !v.videoWidth) return;
+  watchBusy = true;
+  try {
+    const b64 = frameToJpegBase64(v, v.videoWidth, v.videoHeight);
+    const res = await svc.companion.scoreboard(b64);
+    if (!watching) return;              // toggled off mid-flight
+    if (!res.ok) { setWatchNote("Bridge unreachable — Watch paused reading; manual entry still works."); return; }
+    const p = res.parsed || {};
+    if (!Number.isInteger(p.down) || !Number.isInteger(p.distance)) {
+      setWatchNote("Watching — no clear down/distance on screen yet.");
+      return;
+    }
+    const key = `${p.down}|${p.distance}`;
+    if (key === lastSnapKey) {          // debounce: unchanged scoreboard, no re-fire
+      setWatchNote(`Watching — still ${ordinal(p.down)} and ${p.distance === 0 ? "goal" : p.distance}.`);
+      return;
+    }
+    lastSnapKey = key;
+    const filled = applyScoreboard(p);
+    justFilled = new Set(filled);
+    renderPanel();
+    setTimeout(() => { justFilled = new Set(); if (els.panel) renderPanel(); }, 5000);
+    const line = instantRead();          // deterministic, no model
+    showReadCard(line);                  // after renderPanel, so the card sticks
+    svc.speak(line);
+    setWatchNote(`New down — ${ordinal(p.down)} and ${p.distance === 0 ? "goal" : p.distance}. Spoken.`);
+  } finally {
+    watchBusy = false;
+  }
+}
+
+function setWatchNote(t) { watchNote = t; renderWatchUI(); }
+function renderWatchUI() {
+  if (els.watchBtn) {
+    els.watchBtn.textContent = watching ? "⏹ Stop watching" : "👁 Watch";
+    els.watchBtn.classList.toggle("accent", !watching);
+  }
+  if (els.watchNote) els.watchNote.textContent = watchNote;
+}
 
 // ---------------------------------------------------------------- scoreboard scan
 // One frame → the bridge's OCR + parse → auto-fill. Everything stays editable;
@@ -296,6 +397,48 @@ function buildSystemContext() {
 }
 
 // ---------------------------------------------------------------- the read
+// FAST PATH: composed from the vendored numbers with NO model call, so it can be
+// spoken before the snap (~1s, all of it Piper). The model is never on the
+// critical path for a live read — it is only the optional "more detail" below.
+function instantRead() {
+  const r = footballData.instantRead(tendencies(), defenseTendencies(), dataSituation());
+  if (r) { lastInstant = r; return r.line; }
+  // No team picked (or no data): still give something useful and immediate.
+  const s = recipeless();
+  lastInstant = { line: s, numbers: [] };
+  return s;
+}
+
+// A data-free fallback line so "read it" is never dead, even with no teams set.
+function recipeless() {
+  const dd = `${ordinal(sit.down)} and ${sit.distance === 0 ? "goal" : sit.distance}`;
+  const t = ref && (ref.tendencies || []).find((x) => x.id === downDistanceTendencyId());
+  return t ? `${dd}: ${t.detail}` : `${dd}. Pick both teams to get their real tendencies.`;
+}
+
+// OPTIONAL colour: the fuller model read. Only the 2-3 relevant rows go in the
+// prompt (not whole team tables), output is hard-capped, and the model is kept
+// warm — but nothing live waits on this.
+async function moreDetail() {
+  const tend = tendencies(), dTend = defenseTendencies();
+  const brief = (tend || dTend) ? footballData.formatBriefForPrompt(tend, dTend, dataSituation()) : "";
+  const prompt =
+    "You are a football analyst. In AT MOST 45 words, add colour to this pre-snap situation: " +
+    "what the offence is likely to do, what the defence may show, and one thing to watch. " +
+    "Plain speakable text, no lists. General tendencies only — you cannot see the play, and you must " +
+    "not state a coverage shell as fact. Any scheme or coordinator comment must be flagged as general " +
+    "and possibly out of date.\n\n" + brief;
+  try {
+    const res = await svc.companion.ask(prompt, buildContext(), [], {
+      systemExtra: "Be concise and concrete. The numbers provided are current and take precedence.",
+      maxTokens: 120,
+    });
+    return res.ok && res.text ? res.text : (res.text || "Couldn't get more detail right now.");
+  } catch (e) {
+    return "Couldn't get more detail right now.";
+  }
+}
+
 async function generateRead() {
   const hasData = !!tendencies() || !!defenseTendencies();
   const prompt =
@@ -416,8 +559,15 @@ function renderPanel() {
 
         <div style="display:flex; gap:8px; margin-top:8px;">
           <button class="ghostBtn accent" data-el="scanBtn" style="flex:1;">📷 Scan scoreboard</button>
+          <button class="ghostBtn accent" data-el="watchBtn" style="flex:1;">👁 Watch</button>
         </div>
         <input type="file" data-el="scanInput" accept="image/*" capture="environment" style="display:none;">
+        <video data-el="watchVideo" playsinline muted autoplay
+          style="display:none; width:100%; border-radius:12px; margin-top:8px; background:#000; max-height:170px; object-fit:cover;"></video>
+        <div data-el="watchNote" style="font-size:11px; color:var(--warn); margin-top:6px; line-height:1.45;"></div>
+        <div style="font-size:10px; color:var(--dim); margin-top:4px; line-height:1.4;">
+          Watch reads the scoreboard from the camera while this screen is open and pointed at the TV —
+          it uses battery and only works in the foreground. Always-on is a glasses feature later.</div>
         <div data-el="scanNote" style="font-size:11px; color:var(--dim); margin-top:6px; line-height:1.45;"></div>
 
         <div class="fbRow ${hit("offense")} ${hit("defense")}" style="margin-top:8px;"><span class="fbLbl">Matchup</span><span class="fbSeg">
@@ -462,6 +612,7 @@ function renderPanel() {
 
         <div style="display:flex; gap:8px; margin-top:12px;">
           <button class="bigBtn" data-el="readBtn" style="flex:1; padding:13px;">📣 Read it</button>
+          <button class="ghostBtn" data-el="detailBtn">＋ Detail</button>
           <button class="ghostBtn" data-el="resetBtn">Reset</button>
         </div>
         <div style="font-size:11px; color:var(--dim); text-align:center; margin-top:8px;">
@@ -479,9 +630,20 @@ function renderPanel() {
     </div>`;
   for (const el of w.querySelectorAll("[data-el]")) els[el.dataset.el] = el;
   els.panel = w;
+  // The read card has no [data-el], so it would survive this rebuild as a
+  // DETACHED node — and in Watch mode (which re-renders every new down) the
+  // spoken read would silently write into nothing. Drop it so it is recreated.
+  els.readCard = null;
   wirePanel();
   renderRefCards("coverages");
   renderStatCard();
+  renderWatchUI();
+  // Re-attach the live preview after a re-render (renderPanel rebuilds the DOM).
+  if (watching && watchStream && els.watchVideo) {
+    els.watchVideo.srcObject = watchStream;
+    els.watchVideo.style.display = "block";
+    const p = els.watchVideo.play(); if (p && p.catch) p.catch(() => {});
+  }
 }
 
 // Highlight class for a field the last scan just filled (fades after a few seconds).
@@ -537,15 +699,23 @@ function wirePanel() {
     if (f) scanFromFile(f);
   });
   renderScanUI();
-  els.readBtn.addEventListener("click", async () => {
-    els.readBtn.disabled = true;
-    els.readBtn.textContent = "Reading…";
-    const read = await generateRead();
-    els.readBtn.disabled = false;
-    els.readBtn.textContent = "📣 Read it";
-    svc.speak(read);
-    showReadCard(read);
+  // Read it = the INSTANT path. No await, no model — composed and spoken now.
+  els.readBtn.addEventListener("click", () => {
+    const line = instantRead();
+    showReadCard(line);
+    svc.speak(line);
   });
+  // Detail = the optional model colour, explicitly off the critical path.
+  els.detailBtn.addEventListener("click", async () => {
+    els.detailBtn.disabled = true;
+    els.detailBtn.textContent = "Thinking…";
+    const extra = await moreDetail();
+    els.detailBtn.disabled = false;
+    els.detailBtn.textContent = "＋ Detail";
+    showReadCard((lastInstant ? lastInstant.line + "\n\n" : "") + extra);
+    svc.speak(extra);
+  });
+  els.watchBtn.addEventListener("click", toggleWatch);
   els.resetBtn.addEventListener("click", () => { sit = freshSituation(); persist(); renderPanel(); });
 }
 

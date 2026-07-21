@@ -33,6 +33,12 @@ function signed(x) { return x == null ? "n/a" : (x >= 0 ? "+" : "") + x.toFixed(
 function topGroupings(obj, n) {
   return obj ? Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n) : [];
 }
+function ordinalDown(d) { return ["", "1st", "2nd", "3rd", "4th"][d] || `${d}th`; }
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
 // -------------------------------------------------- vendored nflverse provider
 const vendoredProvider = (() => {
@@ -75,6 +81,26 @@ const vendoredProvider = (() => {
         personnel: t.personnel, formation: t.formation,
         fingerprint: t.fingerprint,
       };
+    },
+    // League rank of a team's pass rate in one down|distance cell (1 = most
+    // pass-happy). Computed here from the vendored table — no server needed.
+    rankPass(team, ddKey, minN = 25) {
+      if (!teamsData) return null;
+      const rows = Object.entries(teamsData.teams)
+        .map(([t, r]) => [t, r.downDistance[ddKey]])
+        .filter(([, c]) => c && c.n >= minN && typeof c.pass === "number")
+        .sort((a, b) => b[1].pass - a[1].pass);
+      const i = rows.findIndex(([t]) => t === team);
+      return i < 0 ? null : { rank: i + 1, of: rows.length };
+    },
+    rankBlitz(team, minN = 100) {
+      if (!teamsData) return null;
+      const rows = Object.entries(teamsData.teams)
+        .map(([t, r]) => [t, r.defense && r.defense.overall])
+        .filter(([, o]) => o && typeof o.blitzRate === "number")
+        .sort((a, b) => b[1].blitzRate - a[1].blitzRate);
+      const i = rows.findIndex(([t]) => t === team);
+      return i < 0 ? null : { rank: i + 1, of: rows.length };
     },
     lookupDefense(team, sit) {
       if (!teamsData || !team || !teamsData.teams[team] || !teamsData.teams[team].defense) return null;
@@ -151,6 +177,82 @@ export const footballData = {
       `no-huddle ${pct(fp.noHuddle)}, base personnel ${fp.topPersonnel || "n/a"}, EPA/play ${signed(fp.epa)}.`);
     L.push("Cite the specific numbers. Every '(league X%)' is the LEAGUE average — compare the team to that, " +
       "not to its own rate. Frame as what this team USUALLY does here, never a guaranteed call.");
+    return L.join("\n");
+  },
+
+  // ---- INSTANT READ: composed from the numbers, NO model call ----
+  // The tendency tables already contain the read; making a 7B model do lookups
+  // and arithmetic on the hot path is what cost ~a minute. This assembles a
+  // short speakable line in microseconds so it can be spoken before the snap.
+  instantRead(tend, dTend, sit) {
+    if (!tend && !dTend) return null;
+    const MIN_N = 25;
+    const dd = `${ordinalDown(sit.down)} and ${sit.distance === 0 ? "goal" : sit.distance}`;
+    const sentences = [];
+    const numbers = [];
+    const deviations = [];   // {size, text} — biggest one becomes the "tell"
+
+    // --- offense: situational pass/run rate + league rank ---
+    if (tend && tend.dd && tend.dd.n >= MIN_N) {
+      const p = tend.dd.pass, lg = tend.leagueDd && tend.leagueDd.pass;
+      const r = vendoredProvider.rankPass(tend.team, tend.ddKey);
+      const rankTxt = r ? `, ${ordinal(r.rank)} in the league` : "";
+      if (p >= 0.5) sentences.push(`${tend.team} passes ${pct(p)} on ${dd}${rankTxt}.`);
+      else sentences.push(`${tend.team} runs ${pct(1 - p)} on ${dd}${rankTxt}.`);
+      numbers.push(`${tend.team} pass ${pct(p)} (lg ${pct(lg)})${r ? ` · #${r.rank}` : ""}`);
+      if (lg != null) deviations.push({
+        size: Math.abs(p - lg),
+        text: p > lg ? `they throw it more than most teams here` : `they lean run here more than most`,
+        cue: p > lg ? "expect the pass" : "expect the run",
+      });
+    } else if (tend && tend.overall) {
+      sentences.push(`${tend.team} passes ${pct(tend.overall.passRate)} overall.`);
+      numbers.push(`${tend.team} pass ${pct(tend.overall.passRate)} overall`);
+    }
+
+    // --- defense: blitz/pressure for this exact down & distance ---
+    if (dTend) {
+      const bDD = dTend.blitzDD, o = dTend.overall, lo = dTend.leagueOverall;
+      const blitz = bDD && bDD.n >= MIN_N ? bDD.blitz : o.blitzRate;
+      const lgBlitz = bDD && bDD.n >= MIN_N && dTend.leagueBlitzDD ? dTend.leagueBlitzDD.blitz
+        : (lo && lo.blitzRate);
+      if (blitz != null) {
+        const where = bDD && bDD.n >= MIN_N ? `on ${dd}` : "overall";
+        const rk = vendoredProvider.rankBlitz(dTend.team);
+        sentences.push(`${dTend.team} blitz ${pct(blitz)} ${where}${rk && rk.rank <= 8 ? " — one of the highest rates in the league" : rk && rk.rank >= 25 ? " — one of the lowest" : ""}.`);
+        numbers.push(`${dTend.team} blitz ${pct(blitz)} (lg ${pct(lgBlitz)})`);
+        if (lgBlitz != null) deviations.push({
+          size: Math.abs(blitz - lgBlitz),
+          text: blitz > lgBlitz ? `${dTend.team} blitz well above average here` : `${dTend.team} rarely blitz here`,
+          cue: blitz > lgBlitz ? "watch for the hot route" : "the quarterback should have time",
+        });
+      }
+      if (o && o.pressureRate != null) numbers.push(`pressure ${pct(o.pressureRate)} · sack ${pct(o.sackRate)}`);
+    }
+
+    // --- the tell: biggest deviation from league average ---
+    deviations.sort((a, b) => b.size - a.size);
+    const tell = deviations[0];
+    if (tell && tell.size >= 0.04) sentences.push(`${cap(tell.text)} — ${tell.cue}.`);
+
+    if (!sentences.length) return null;
+    return { line: sentences.join(" "), numbers, tell: tell ? tell.text : null };
+  },
+
+  // A trimmed prompt block for the OPTIONAL "more detail" model call — only the
+  // 2-3 rows that matter, so the model isn't re-reading whole team tables.
+  formatBriefForPrompt(tend, dTend, sit) {
+    const L = [];
+    const dd = `${ordinalDown(sit.down)} and ${sit.distance === 0 ? "goal" : sit.distance}`;
+    L.push(`Situation: ${dd}, ${sit.zone.replace(/-/g, " ")}.`);
+    if (tend && tend.dd) L.push(`${tend.team} offense here: pass ${pct(tend.dd.pass)} (league ${pct(tend.leagueDd && tend.leagueDd.pass)}), n=${tend.dd.n}.`);
+    if (tend && tend.fingerprint) L.push(`${tend.team} identity: shotgun ${pct(tend.fingerprint.offense.shotgun)}, base personnel ${tend.fingerprint.offense.topPersonnel || "n/a"}.`);
+    if (dTend) {
+      const b = dTend.blitzDD || {};
+      L.push(`${dTend.team} defense: blitz ${pct(b.blitz != null ? b.blitz : dTend.overall.blitzRate)} ` +
+        `(league ${pct(dTend.leagueOverall && dTend.leagueOverall.blitzRate)}), pressure ${pct(dTend.overall.pressureRate)}.`);
+    }
+    L.push("Coverage shells: n/a (not in public data) — never state one as fact.");
     return L.join("\n");
   },
 
