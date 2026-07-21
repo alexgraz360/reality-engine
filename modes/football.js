@@ -17,7 +17,10 @@ import footballData from "../services/footballData.js";
 let root, svc, store, els = {};
 let ref = null;
 let sit = null;
-let dataReady = false; // vendored tendency data loaded
+let dataReady = false;        // vendored tendency data loaded
+let scanning = false;         // scoreboard OCR in flight
+let justFilled = new Set();   // fields the last scan filled (for highlighting)
+let scanNote = "";            // status/honesty line under the scan button
 
 const ZONES = [
   { id: "backed-up", label: "Backed up" },
@@ -35,6 +38,7 @@ function freshSituation() {
     twoMinute: false,
     see: "",                          // free "what you see" text
     offense: "", defense: "",         // team codes (nflverse); optional
+    clock: "",                        // game clock from a scan, e.g. "2:11"
   };
 }
 
@@ -50,7 +54,7 @@ export default {
   title: "Football · read the game",
   icon: "🏈",
   family: "Learn",
-  permissions: ["mic"],
+  permissions: ["mic", "camera"],
 
   async init(ctx) {
     root = ctx.root;
@@ -131,10 +135,114 @@ export default {
   _state: () => ({ situation: { ...sit }, dataReady }),
   _tendencies: () => tendencies(),
   _systemContext: () => buildSystemContext(),
+  _scan: (b64) => runScan(b64),                 // drive a scan without the camera
+  _applyScoreboard: (p) => applyScoreboard(p),  // field-mapping check
+  _justFilled: () => [...justFilled],
   _set: (partial) => { Object.assign(sit, partial); persist(); if (els.panel) renderPanel(); },
   _read: () => generateRead(),
   _reference: () => ref,
 };
+
+// ---------------------------------------------------------------- scoreboard scan
+// One frame → the bridge's OCR + parse → auto-fill. Everything stays editable;
+// fields the bridge couldn't read are left alone rather than guessed.
+function frameToJpegBase64(source, w, h) {
+  const MAX = 1024; // a bit larger than /vision: small text needs the pixels
+  const scale = Math.min(1, MAX / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w * scale));
+  c.height = Math.max(1, Math.round(h * scale));
+  c.getContext("2d").drawImage(source, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.85).split(",")[1];
+}
+
+function startScan() {
+  if (scanning) return;
+  els.scanInput.value = ""; // allow re-picking the same shot
+  els.scanInput.click();    // iOS opens the camera and returns ONE photo
+}
+
+async function scanFromFile(file) {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = async () => {
+    const b64 = frameToJpegBase64(img, img.naturalWidth, img.naturalHeight);
+    URL.revokeObjectURL(url);
+    await runScan(b64);
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); setScanNote("Couldn't read that photo — try again."); };
+  img.src = url;
+}
+
+async function runScan(b64) {
+  scanning = true;
+  setScanNote("Reading the scoreboard… (a few seconds)");
+  renderScanUI();
+  try {
+    const res = await svc.companion.scoreboard(b64);
+    if (!res.ok) { setScanNote(res.text + " You can still set everything by hand."); return; }
+    const filled = applyScoreboard(res.parsed);
+    if (!filled.length) {
+      setScanNote("Couldn't read a scoreboard in that shot — set the situation by hand, or try again closer.");
+    } else {
+      setScanNote(`Auto-filled ${filled.join(", ")} from the scoreboard — check and fix any misread.`);
+      justFilled = new Set(filled);
+      setTimeout(() => { justFilled = new Set(); if (els.panel) renderPanel(); }, 6000);
+    }
+    renderPanel();
+  } finally {
+    scanning = false;
+    renderScanUI();
+  }
+}
+
+// Map the parsed bug onto the situation. Returns the list of fields actually set.
+function applyScoreboard(p) {
+  const filled = [];
+  if (Number.isInteger(p.down) && p.down >= 1 && p.down <= 4) { sit.down = p.down; filled.push("down"); }
+  if (Number.isInteger(p.distance) && p.distance >= 0) { sit.distance = p.distance; filled.push("distance"); }
+  if (Number.isInteger(p.quarter)) { sit.quarter = Math.min(4, p.quarter); filled.push("quarter"); }
+  if (typeof p.clock === "string" && p.clock) {
+    sit.clock = p.clock;
+    filled.push("clock");
+    // Two-minute drill is a real tendency switch — infer it, still user-editable.
+    const [m] = p.clock.split(":").map(Number);
+    sit.twoMinute = (p.quarter === 2 || p.quarter === 4) && m < 2;
+  }
+  // Possession picks the offense when it matches a team we have data for.
+  const teams = dataReady ? footballData.getTeams() : [];
+  if (p.possession && teams.includes(p.possession)) { sit.offense = p.possession; filled.push("offense"); }
+  // Scores → margin from the offense's point of view (needs to know who has it).
+  const pairs = [[p.homeTeam, p.homeScore], [p.awayTeam, p.awayScore]].filter(([t, s]) => t && Number.isInteger(s));
+  if (pairs.length === 2 && sit.offense) {
+    const mine = pairs.find(([t]) => t === sit.offense);
+    const theirs = pairs.find(([t]) => t !== sit.offense);
+    if (mine && theirs) { sit.margin = mine[1] - theirs[1]; filled.push("score"); }
+    if (theirs && teams.includes(theirs[0]) && !sit.defense) { sit.defense = theirs[0]; filled.push("defense"); }
+  }
+  // "PHI 35" → a field zone, but only if we know whose side that is.
+  if (typeof p.yardLine === "string" && sit.offense) {
+    const m = p.yardLine.match(/^([A-Z]{2,3})\s*(\d{1,2})$/);
+    if (m) {
+      const yardsToOpp = m[1] === sit.offense ? 100 - parseInt(m[2], 10) : parseInt(m[2], 10);
+      sit.zone = yardsToOpp <= 5 ? "goal-line" : yardsToOpp <= 20 ? "red-zone"
+        : yardsToOpp <= 40 ? "plus-territory" : yardsToOpp <= 59 ? "midfield"
+        : yardsToOpp <= 89 ? "own-territory" : "backed-up";
+      filled.push("field");
+    }
+  }
+  if (filled.length) persist();
+  return filled;
+}
+
+function setScanNote(t) { scanNote = t; renderScanUI(); }
+function renderScanUI() {
+  if (els.scanBtn) {
+    els.scanBtn.disabled = scanning;
+    els.scanBtn.textContent = scanning ? "Reading…" : "📷 Scan scoreboard";
+  }
+  if (els.scanNote) els.scanNote.textContent = scanNote;
+}
 
 // ---------------------------------------------------------------- context builders
 function buildContext() {
@@ -145,6 +253,7 @@ function buildContext() {
     z ? `ball in ${z.label.toLowerCase()}` : null,
     `Q${sit.quarter}`,
     sit.margin === 0 ? "score even" : `offense ${sit.margin > 0 ? "up" : "down"} ${Math.abs(sit.margin)}`,
+    sit.clock ? `${sit.clock} on the clock` : null,
     sit.twoMinute ? "two-minute drill" : null,
   ].filter(Boolean);
   let s = `Football mode. Situation: ${parts.join(", ")}.`;
@@ -287,31 +396,39 @@ function renderPanel() {
           </div>
         </div>
 
-        <div class="fbRow" style="margin-top:8px;"><span class="fbLbl">Matchup</span><span class="fbSeg">
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button class="ghostBtn accent" data-el="scanBtn" style="flex:1;">📷 Scan scoreboard</button>
+        </div>
+        <input type="file" data-el="scanInput" accept="image/*" capture="environment" style="display:none;">
+        <div data-el="scanNote" style="font-size:11px; color:var(--dim); margin-top:6px; line-height:1.45;"></div>
+
+        <div class="fbRow ${hit("offense")} ${hit("defense")}" style="margin-top:8px;"><span class="fbLbl">Matchup</span><span class="fbSeg">
           ${teamSelect("offense", sit.offense, "Offense")}
           <span style="color:var(--dim); font-size:12px;">vs</span>
           ${teamSelect("defense", sit.defense, "Defense (opt.)")}
         </span></div>
 
         <div style="border:1px solid var(--line); border-radius:14px; background:var(--panel-solid); padding:12px; margin-top:8px;">
-          <div class="fbRow"><span class="fbLbl">Down</span><span class="fbSeg" data-group="down">
+          <div class="fbRow ${hit("down")}"><span class="fbLbl">Down</span><span class="fbSeg" data-group="down">
             ${[1,2,3,4].map((d) => `<button class="fbChip ${sit.down===d?"on":""}" data-down="${d}">${ordinal(d)}</button>`).join("")}
           </span></div>
-          <div class="fbRow"><span class="fbLbl">Distance</span><span class="fbSeg">
+          <div class="fbRow ${hit("distance")}"><span class="fbLbl">Distance</span><span class="fbSeg">
             <button class="fbChip" data-dist="-1">–</button>
             <span class="fbVal" data-el="distVal">${sit.distance===0?"Goal":sit.distance}</span>
             <button class="fbChip" data-dist="1">+</button>
             <button class="fbChip ${sit.distance<=2?"on":""}" data-distset="2">Short</button>
             <button class="fbChip ${sit.distance>=7?"on":""}" data-distset="10">Long</button>
           </span></div>
-          <div class="fbRow"><span class="fbLbl">Field</span><span class="fbSeg fbWrap">
+          <div class="fbRow ${hit("field")}"><span class="fbLbl">Field</span><span class="fbSeg fbWrap">
             ${ZONES.map((zn) => `<button class="fbChip ${sit.zone===zn.id?"on":""}" data-zone="${zn.id}">${zn.label}</button>`).join("")}
           </span></div>
-          <div class="fbRow"><span class="fbLbl">Quarter</span><span class="fbSeg">
+          <div class="fbRow ${hit("quarter")} ${hit("clock")}"><span class="fbLbl">Quarter</span><span class="fbSeg">
             ${[1,2,3,4].map((qn) => `<button class="fbChip ${sit.quarter===qn?"on":""}" data-qtr="${qn}">Q${qn}</button>`).join("")}
             <button class="fbChip ${sit.twoMinute?"on":""}" data-el="twoMin" style="margin-left:6px;">2-min</button>
+            <input type="text" data-el="clock" value="${escapeAttr(sit.clock)}" placeholder="clock"
+              autocomplete="off" style="width:66px; text-align:center; margin-left:6px;">
           </span></div>
-          <div class="fbRow"><span class="fbLbl">Score</span><span class="fbSeg">
+          <div class="fbRow ${hit("score")}"><span class="fbLbl">Score</span><span class="fbSeg">
             <button class="fbChip" data-margin="-1">–</button>
             <span class="fbVal" data-el="marginVal">${marginLabel()}</span>
             <button class="fbChip" data-margin="1">+</button>
@@ -348,6 +465,9 @@ function renderPanel() {
   renderRefCards("coverages");
   renderStatCard();
 }
+
+// Highlight class for a field the last scan just filled (fades after a few seconds).
+function hit(field) { return justFilled.has(field) ? "fbHit" : ""; }
 
 // A team <select> populated from the provider seam (empty option = none).
 function teamSelect(kind, value, label) {
@@ -388,6 +508,13 @@ function wirePanel() {
   root.querySelectorAll("[data-team]").forEach((sel) => {
     sel.addEventListener("change", () => { sit[sel.dataset.team] = sel.value; persist(); renderStatCard(); });
   });
+  els.clock.addEventListener("change", () => { sit.clock = els.clock.value.trim(); persist(); });
+  els.scanBtn.addEventListener("click", startScan);
+  els.scanInput.addEventListener("change", () => {
+    const f = els.scanInput.files && els.scanInput.files[0];
+    if (f) scanFromFile(f);
+  });
+  renderScanUI();
   els.readBtn.addEventListener("click", async () => {
     els.readBtn.disabled = true;
     els.readBtn.textContent = "Reading…";

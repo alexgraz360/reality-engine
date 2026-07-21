@@ -159,6 +159,42 @@ export const companion = {
     }
   },
 
+  // ---- scoreboard OCR (bridge /scoreboard) ----
+  // ONE downscaled frame of a TV score bug → { parsed fields, rawText }. Fields
+  // the bridge could not read clearly come back null and stay manual — it never
+  // fabricates. Image goes only to the user's own bridge, same as vision.
+  async scoreboard(imageBase64) {
+    if (!this.isConfigured()) {
+      return { ok: false, text: "The companion isn't configured yet — add your bridge in Settings first." };
+    }
+    const cfg = this.getConfig();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60_000);
+    try {
+      const r = await fetch(scrubEndpoint(cfg.endpoint) + "/scoreboard", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + scrub(cfg.token) },
+        body: JSON.stringify({ imageBase64 }),
+        signal: ctrl.signal,
+      });
+      if (r.status === 401) return { ok: false, text: "The bridge rejected the token — re-check Settings → Companion." };
+      if (r.status === 429) return { ok: false, text: "Too many scans just now — wait a moment and try again." };
+      if (r.status === 400) return { ok: false, text: "The bridge refused that image — try again." };
+      if (!r.ok) return { ok: false, text: "The scoreboard reader isn't available on the bridge right now." };
+      const data = await r.json();
+      return { ok: true, parsed: data.parsed || {}, rawText: data.rawText || "", stats: data.stats || null };
+    } catch (err) {
+      return {
+        ok: false,
+        text: err && err.name === "AbortError"
+          ? "The scan took too long — try again."
+          : "Couldn't reach the bridge to scan — is the host machine awake?",
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
   // history: optional prior turns [{role:'user'|'assistant', content}] — the
   // caller keeps the rolling window; we defensively re-cap it here so the
   // request always fits the bridge's message-count/size limits.

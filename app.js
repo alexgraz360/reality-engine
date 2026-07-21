@@ -32,7 +32,7 @@ const REGISTRY = [
   },
   {
     id: "football", title: "Football · read the game", family: "Learn", icon: "🏈",
-    permissions: ["mic"],
+    permissions: ["mic", "camera"],
     blurb: "Be the smartest person in the room — set the down and what you see, get a speakable pre-snap read. General tendencies, no live feed.",
     load: () => import("./modes/football.js"),
   },
