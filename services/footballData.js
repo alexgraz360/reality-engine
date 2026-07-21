@@ -191,12 +191,14 @@ export const footballData = {
     const sentences = [];
     const numbers = [];
     const deviations = [];   // {size, text} — biggest one becomes the "tell"
+    let lean = null;         // "pass" | "run" — the data's direction; the call the model must not flip
 
     // --- offense: situational pass/run rate + league rank ---
     if (tend && tend.dd && tend.dd.n >= MIN_N) {
       const p = tend.dd.pass, lg = tend.leagueDd && tend.leagueDd.pass;
       const r = vendoredProvider.rankPass(tend.team, tend.ddKey);
       const rankTxt = r ? `, ${ordinal(r.rank)} in the league` : "";
+      lean = p >= 0.5 ? "pass" : "run";
       if (p >= 0.5) sentences.push(`${tend.team} passes ${pct(p)} on ${dd}${rankTxt}.`);
       else sentences.push(`${tend.team} runs ${pct(1 - p)} on ${dd}${rankTxt}.`);
       numbers.push(`${tend.team} pass ${pct(p)} (lg ${pct(lg)})${r ? ` · #${r.rank}` : ""}`);
@@ -206,6 +208,7 @@ export const footballData = {
         cue: p > lg ? "expect the pass" : "expect the run",
       });
     } else if (tend && tend.overall) {
+      lean = tend.overall.passRate >= 0.5 ? "pass" : "run";
       sentences.push(`${tend.team} passes ${pct(tend.overall.passRate)} overall.`);
       numbers.push(`${tend.team} pass ${pct(tend.overall.passRate)} overall`);
     }
@@ -236,7 +239,7 @@ export const footballData = {
     if (tell && tell.size >= 0.04) sentences.push(`${cap(tell.text)} — ${tell.cue}.`);
 
     if (!sentences.length) return null;
-    return { line: sentences.join(" "), numbers, tell: tell ? tell.text : null };
+    return { line: sentences.join(" "), numbers, tell: tell ? tell.text : null, lean };
   },
 
   // A trimmed prompt block for the OPTIONAL "more detail" model call — only the

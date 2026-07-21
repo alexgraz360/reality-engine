@@ -183,6 +183,8 @@ export default {
   _systemContext: () => buildSystemContext(),
   _scan: (b64) => runScan(b64),                 // drive a scan without the camera
   _instantRead: () => instantRead(),            // fast path, no model
+  _moreDetail: () => moreDetail(),              // anchored model colour
+  _enforceDirection: (t, l) => enforceDirection(t, l),
   _lastInstant: () => lastInstant,
   _watching: () => watching,
   _forceWatch: (on) => { watching = on; if (!on) { clearInterval(watchTimer); watchTimer = 0; } lastSnapKey = ""; },
@@ -578,27 +580,56 @@ function recipeless() {
   return t ? `${dd}: ${t.detail}` : `${dd}. Pick both teams to get their real tendencies.`;
 }
 
-// OPTIONAL colour: the fuller model read. Only the 2-3 relevant rows go in the
-// prompt (not whole team tables), output is hard-capped, and the model is kept
-// warm — but nothing live waits on this.
+// OPTIONAL colour — but ONE VOICE. The deterministic instant read is the
+// conclusion; the model's only job is to explain and deepen THAT call. It gets
+// the exact line and the numbers it was built from, is told it may not make a
+// different call, runs near-deterministic so the same play reads the same way
+// every time, and a guardrail below drops any sentence that still flips the
+// run/pass direction. The model adds colour; the data owns the call.
 async function moreDetail() {
-  const tend = tendencies(), dTend = defenseTendencies();
-  const brief = (tend || dTend) ? footballData.formatBriefForPrompt(tend, dTend, dataSituation()) : "";
+  const line = instantRead();                 // refresh the anchor for the current play
+  const numbers = (lastInstant && lastInstant.numbers) || [];
+  const lean = (lastInstant && lastInstant.lean) || null;
   const prompt =
-    "You are a football analyst. In AT MOST 45 words, add colour to this pre-snap situation: " +
-    "what the offence is likely to do, what the defence may show, and one thing to watch. " +
-    "Plain speakable text, no lists. General tendencies only — you cannot see the play, and you must " +
-    "not state a coverage shell as fact. Any scheme or coordinator comment must be flagged as general " +
-    "and possibly out of date.\n\n" + brief;
+    "You are a football analyst. The pre-snap call below is FIXED — it comes from real season data " +
+    "and it is the conclusion. In AT MOST 45 words, EXPLAIN it and add nuance: why the numbers point " +
+    "that way, the matchup behind them, and one thing to watch. Do NOT make a different call." +
+    (lean ? ` The data leans ${lean.toUpperCase()} here — your explanation must agree with that ` +
+            `direction and must not predict the opposite.` : "") +
+    " Plain speakable text, no lists. You cannot see the play; never state a coverage shell as fact; " +
+    "any scheme or coordinator comment must be flagged as general and possibly out of date.\n\n" +
+    "THE CALL: " + line +
+    (numbers.length ? "\nBUILT FROM: " + numbers.join(" · ") : "");
   try {
     const res = await svc.companion.ask(prompt, buildContext(), [], {
-      systemExtra: "Be concise and concrete. The numbers provided are current and take precedence.",
+      systemExtra: "You are elaborating a fixed, data-derived conclusion — not forming your own. " +
+        "Same direction, deeper why.",
       maxTokens: 120,
+      temperature: 0.05,   // near-greedy + pinned seed on the bridge
+      stable: true,        // drop the timestamp line so the prompt is identical too
     });
-    return res.ok && res.text ? res.text : (res.text || "Couldn't get more detail right now.");
+    if (!res.ok || !res.text) return { line, detail: "", note: res.text || "Couldn't get more detail right now." };
+    return { line, detail: enforceDirection(res.text, lean) };
   } catch (e) {
-    return "Couldn't get more detail right now.";
+    return { line, detail: "", note: "Couldn't get more detail right now." };
   }
+}
+
+// Guardrail: if a sentence of model output predicts the OPPOSITE of the data's
+// run/pass lean, drop it — the numbers own the call. Sentences that mention the
+// agreeing direction (or are directionless colour) pass through.
+const PREDICTS_PASS = /\b(?:expect|likely|will|should|look(?:ing)? for|anticipate|watch for|probably|going to)\b[^.!?]*\b(?:pass(?:es|ing)?|throw(?:s|ing)?|air(?:s|ing)? it out|drops? back)\b/i;
+const PREDICTS_RUN = /\b(?:expect|likely|will|should|look(?:ing)? for|anticipate|watch for|probably|going to)\b[^.!?]*\b(?:run(?:s|ning)?(?! game)|rush(?:es|ing)?|hand(?:s|ing)?[- ]?(?:it )?off|ground game|keeps? it on the ground)\b/i;
+function enforceDirection(text, lean) {
+  if (!lean) return text.trim();
+  const wrong = lean === "pass" ? PREDICTS_RUN : PREDICTS_PASS;
+  const right = lean === "pass" ? PREDICTS_PASS : PREDICTS_RUN;
+  const kept = (text.match(/[^.!?]+[.!?]?/g) || [text]).filter((s) => {
+    const contradicts = wrong.test(s) && !right.test(s);
+    if (contradicts) console.warn(`football: dropped detail sentence contradicting the ${lean} lean:`, s.trim());
+    return !contradicts;
+  });
+  return kept.join("").replace(/\s+/g, " ").trim();
 }
 
 async function generateRead() {
@@ -904,11 +935,13 @@ function wirePanel() {
   els.detailBtn.addEventListener("click", async () => {
     els.detailBtn.disabled = true;
     els.detailBtn.textContent = "Thinking…";
-    const extra = await moreDetail();
+    const r = await moreDetail();
     els.detailBtn.disabled = false;
     els.detailBtn.textContent = "＋ Detail";
-    showReadCard((lastInstant ? lastInstant.line + "\n\n" : "") + extra);
-    svc.speak(extra);
+    // ONE read: headline (the data's call) + the model's supporting explanation
+    // beneath it; the spoken line is the same unified text the card shows.
+    showReadCard(r.line, r.detail || r.note);
+    svc.speak(r.detail ? `${r.line} ${r.detail}` : r.line);
   });
   els.watchBtn.addEventListener("click", toggleWatch);
   els.swapBtn.addEventListener("click", () => {
@@ -984,13 +1017,22 @@ function refCard(title, body) {
 }
 
 // The read sits right under the camera and is the most readable thing on screen.
-function showReadCard(read) {
+// Optional `detail` renders as supporting explanation under the headline — one
+// coherent read, not a second opinion.
+function showReadCard(read, detail) {
   if (!els.readCard) return;
   els.readCard.style.cssText =
     "display:block; border:1px solid rgba(77,163,255,0.45); border-radius:14px;" +
     "background:rgba(77,163,255,0.09); padding:13px 15px; margin-top:10px;" +
     "font-size:16px; line-height:1.5; font-weight:600; white-space:pre-wrap;";
   els.readCard.textContent = read;
+  if (detail) {
+    const d = document.createElement("div");
+    d.style.cssText = "margin-top:8px; padding-top:8px; border-top:1px solid rgba(77,163,255,0.25);" +
+      "font-size:13.5px; font-weight:400; color:var(--text); line-height:1.55;";
+    d.textContent = detail;
+    els.readCard.appendChild(d);
+  }
 }
 
 function marginLabel() {

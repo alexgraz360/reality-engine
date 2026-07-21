@@ -255,7 +255,10 @@ export const companion = {
       ...reference,
       {
         role: "user",
-        content: nowLine + "\n" +
+        // opts.stable drops the wall-clock line: callers that need the same
+        // prompt to give the same answer (e.g. a repeated pre-snap read) can't
+        // have the timestamp re-randomizing the output every minute.
+        content: (opts && opts.stable ? "" : nowLine + "\n") +
           (context ? `Context — what I'm doing right now: ${context}\n` : "") +
           "\nQuestion: " + prompt,
       },
@@ -272,6 +275,9 @@ export const companion = {
           // Optional hard cap on reply length (the bridge clamps it) — used by
           // short "add colour" calls so they can't ramble on a slow local model.
           ...(Number.isInteger(opts.maxTokens) ? { maxTokens: opts.maxTokens } : {}),
+          // Optional temperature override (bridge clamps 0..1). Near-zero makes
+          // a read stable across runs instead of a new opinion each tap.
+          ...(typeof opts.temperature === "number" ? { temperature: opts.temperature } : {}),
         }),
         signal: ctrl.signal,
       });
