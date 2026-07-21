@@ -12,9 +12,12 @@
 // general tendencies, never guaranteed play calls. Baked into both the prompt
 // and the on-screen note.
 
+import footballData from "../services/footballData.js";
+
 let root, svc, store, els = {};
 let ref = null;
 let sit = null;
+let dataReady = false; // vendored tendency data loaded
 
 const ZONES = [
   { id: "backed-up", label: "Backed up" },
@@ -31,7 +34,15 @@ function freshSituation() {
     quarter: 1, margin: 0,            // offense point differential (+ ahead, − behind)
     twoMinute: false,
     see: "",                          // free "what you see" text
+    offense: "", defense: "",         // team codes (nflverse); optional
   };
+}
+
+// Situation the data providers understand.
+function dataSituation() { return { down: sit.down, distance: sit.distance, zone: sit.zone }; }
+function tendencies() {
+  if (!dataReady || !sit.offense) return null;
+  return footballData.getTendencies(sit.offense, dataSituation());
 }
 
 export default {
@@ -45,11 +56,12 @@ export default {
     root = ctx.root;
     svc = ctx.services;
     store = svc.storage.scope("football");
-    sit = store.get("situation") || freshSituation();
+    sit = Object.assign(freshSituation(), store.get("situation") || {}); // merge so new fields exist
     try {
       const r = await fetch(new URL("../data/football-reference.json", import.meta.url));
       ref = await r.json();
     } catch (e) { console.error("football reference failed to load:", e); ref = null; }
+    dataReady = await footballData.ready(); // vendored nflverse tendencies (offline)
     renderPanel();
   },
 
@@ -116,7 +128,9 @@ export default {
   },
 
   // ---- verification hooks ----
-  _state: () => ({ situation: { ...sit } }),
+  _state: () => ({ situation: { ...sit }, dataReady }),
+  _tendencies: () => tendencies(),
+  _systemContext: () => buildSystemContext(),
   _set: (partial) => { Object.assign(sit, partial); persist(); if (els.panel) renderPanel(); },
   _read: () => generateRead(),
   _reference: () => ref,
@@ -134,6 +148,7 @@ function buildContext() {
     sit.twoMinute ? "two-minute drill" : null,
   ].filter(Boolean);
   let s = `Football mode. Situation: ${parts.join(", ")}.`;
+  if (sit.offense) s += ` Offense on the field: ${sit.offense}${sit.defense ? ` vs ${sit.defense} defense` : ""}.`;
   if (sit.see && sit.see.trim()) s += ` User sees: ${sit.see.trim()}.`;
   return s;
 }
@@ -148,17 +163,25 @@ function buildSystemContext() {
     "No team-specific or proprietary claims.";
   const lines = relevantReference();
   if (lines.length) s += "\n\nRelevant reference for this situation:\n" + lines.join("\n");
+  // Real per-team tendency numbers (vendored public data) when a team is picked —
+  // this is what turns a generic read into "they pass 70% here, above league".
+  const tend = tendencies();
+  if (tend) s += "\n\n" + footballData.formatForPrompt(tend);
   return s;
 }
 
 // ---------------------------------------------------------------- the read
 async function generateRead() {
+  const hasData = !!tendencies();
   const prompt =
     "Give a pre-snap read for the current situation as three short, speakable parts, one sentence each, " +
     "in this order and labeled exactly:\n" +
     "Offense: the likely tendencies here (run/pass lean and a common concept for this down, distance, field zone and personnel).\n" +
     "Defense: what they may show and do (a likely coverage or pressure in this situation).\n" +
     "Watch: one matchup or tell to watch for.\n" +
+    (hasData
+      ? "You have this team's real tendency numbers — cite at least one specific figure and how it compares to league (e.g. \"they pass 97% here, well above league\") so the user sounds informed. "
+      : "") +
     "Keep the whole thing short enough to say out loud in a room. General tendencies only — you cannot see the play.";
   try {
     const res = await svc.companion.ask(prompt, buildContext(), [], { systemExtra: buildSystemContext() });
@@ -264,6 +287,12 @@ function renderPanel() {
           </div>
         </div>
 
+        <div class="fbRow" style="margin-top:8px;"><span class="fbLbl">Matchup</span><span class="fbSeg">
+          ${teamSelect("offense", sit.offense, "Offense")}
+          <span style="color:var(--dim); font-size:12px;">vs</span>
+          ${teamSelect("defense", sit.defense, "Defense (opt.)")}
+        </span></div>
+
         <div style="border:1px solid var(--line); border-radius:14px; background:var(--panel-solid); padding:12px; margin-top:8px;">
           <div class="fbRow"><span class="fbLbl">Down</span><span class="fbSeg" data-group="down">
             ${[1,2,3,4].map((d) => `<button class="fbChip ${sit.down===d?"on":""}" data-down="${d}">${ordinal(d)}</button>`).join("")}
@@ -294,6 +323,8 @@ function renderPanel() {
           </div>
         </div>
 
+        <div data-el="statCard"></div>
+
         <div style="display:flex; gap:8px; margin-top:12px;">
           <button class="bigBtn" data-el="readBtn" style="flex:1; padding:13px;">📣 Read it</button>
           <button class="ghostBtn" data-el="resetBtn">Reset</button>
@@ -315,11 +346,48 @@ function renderPanel() {
   els.panel = w;
   wirePanel();
   renderRefCards("coverages");
+  renderStatCard();
+}
+
+// A team <select> populated from the provider seam (empty option = none).
+function teamSelect(kind, value, label) {
+  const teams = dataReady ? footballData.getTeams() : [];
+  const opts = [`<option value="">${label}</option>`]
+    .concat(teams.map((t) => `<option value="${t}" ${t === value ? "selected" : ""}>${t}</option>`))
+    .join("");
+  return `<select data-team="${kind}" style="flex:1; min-width:0;">${opts}</select>`;
+}
+
+// Live raw numbers for the selected team + situation (readable without the model),
+// plus the honesty/attribution note.
+function renderStatCard() {
+  const host = els.statCard;
+  if (!host) return;
+  const tend = tendencies();
+  if (!tend) {
+    host.innerHTML = dataReady
+      ? '<div style="font-size:11px; color:var(--dim); margin-top:10px;">Pick the offense on the field to see real tendency numbers here.</div>'
+      : "";
+    return;
+  }
+  const lines = footballData.cardLines(tend);
+  const seasons = tend.meta.seasons.join("–");
+  host.innerHTML = `
+    <div style="border:1px solid rgba(255,209,102,0.35); border-radius:12px; background:rgba(255,209,102,0.05); padding:10px 12px; margin-top:10px;">
+      <div style="font-family:var(--mono); font-size:10px; letter-spacing:0.08em; color:var(--gold); margin-bottom:6px;">
+        ${tend.team} TENDENCIES · ${seasons}</div>
+      ${lines.map((l) => `<div style="font-size:12px; color:var(--text); line-height:1.55;">${l}</div>`).join("")}
+      <div style="font-size:10px; color:var(--dim); margin-top:7px; line-height:1.4;">
+        Tendencies from public data (nflverse), season-to-date — not a prediction.</div>
+    </div>`;
 }
 
 function wirePanel() {
   root.addEventListener("click", onPanelClick);
   els.see.addEventListener("change", () => { sit.see = els.see.value; persist(); });
+  root.querySelectorAll("[data-team]").forEach((sel) => {
+    sel.addEventListener("change", () => { sit[sel.dataset.team] = sel.value; persist(); renderStatCard(); });
+  });
   els.readBtn.addEventListener("click", async () => {
     els.readBtn.disabled = true;
     els.readBtn.textContent = "Reading…";
@@ -354,6 +422,7 @@ function onPanelClick(e) {
   root.querySelectorAll("[data-distset]").forEach((x) => x.classList.toggle("on",
     (+x.dataset.distset === 2 && sit.distance <= 2) || (+x.dataset.distset === 10 && sit.distance >= 7)));
   if (els.twoMin) els.twoMin.classList.toggle("on", sit.twoMinute);
+  renderStatCard(); // down/distance/zone changed → refresh the real-numbers card
 }
 
 function refreshValues() {

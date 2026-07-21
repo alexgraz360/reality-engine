@@ -107,6 +107,33 @@ Two other entry flavors need **no module**:
   (used for astronomy/physics during the gradual migration).
 - `{ ..., soon: true }` — a greyed "coming soon" card.
 
+## Football tendency providers (a mode-local data seam)
+
+Football mode grounds its reads in real numbers through a small **provider seam**
+in [`services/footballData.js`](services/footballData.js), designed so a second
+data source can be added later without touching the mode.
+
+A provider implements:
+
+```js
+{
+  id, label,
+  async ready(),                        // load once; return true if usable
+  teams(): string[],                    // team codes it knows
+  lookup(team, { down, distance, zone }) // raw tendency rows, or null
+}
+```
+
+`PROVIDERS` is an ordered list. `footballData.getTendencies(team, situation)` calls
+each provider and **overlays** later results onto earlier ones, so a future
+provider (e.g. Alex's own analytics pages) can add or override fields without the
+mode changing. Today there is one provider: the vendored **nflverse** public
+dataset (`data/football/tendencies.json` + `league.json`), built offline and
+committed as compact aggregates only. The mode reads tendencies synchronously
+after `footballData.ready()` resolves in `init()`, injects them into the analyst
+prompt via `getSystemContext()`, and shows a couple of raw numbers on the card.
+To add the second provider: append it to `PROVIDERS`; nothing else changes.
+
 ## Reference implementation
 
 [`modes/pendulum.js`](modes/pendulum.js) exercises the whole surface: gesture-gated
