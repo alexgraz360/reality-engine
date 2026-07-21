@@ -26,6 +26,10 @@ let watching = false;         // Watch mode on
 let watchStream = null, watchTimer = 0, wakeLock = null;
 let lastSnapKey = "";         // down|distance of the last fired read (debounce)
 let watchNote = "";
+let manualOpen = false;       // "Set manually" expander — collapsed by default
+let watchPulse = false;       // scanning heartbeat
+let watchSaw = "";            // first few raw OCR tokens, so aiming is visible
+let watchRead = "";           // "1st & 10" once a down is recognised
 
 const ZONES = [
   { id: "backed-up", label: "Backed up" },
@@ -201,6 +205,7 @@ function stopWatch(note) {
   if (watchStream) { svc.sensors.releaseStream(watchStream); watchStream = null; }
   if (els.watchVideo) { els.watchVideo.srcObject = null; els.watchVideo.style.display = "none"; }
   if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+  watchPulse = false; watchSaw = ""; watchRead = "";
   setWatchNote(note || "");
   renderWatchUI();
 }
@@ -211,21 +216,33 @@ async function watchTick() {
   const v = els.watchVideo;
   if (!v || !v.videoWidth) return;
   watchBusy = true;
+  watchPulse = true; renderWatchUI();    // heartbeat: prove it's alive
   try {
     const b64 = frameToJpegBase64(v, v.videoWidth, v.videoHeight);
     const res = await svc.companion.scoreboard(b64);
     if (!watching) return;              // toggled off mid-flight
     if (!res.ok) { setWatchNote("Bridge unreachable — Watch paused reading; manual entry still works."); return; }
-    const p = res.parsed || {};
+    const p = { ...(res.parsed || {}) };
+    // Show what the OCR actually caught, so the user can aim by watching it.
+    watchSaw = summariseOcr(res.rawText);
+    // Safety net: catch "3rd & 7" / "1ST AND 10" ANYWHERE in the raw text, even
+    // when it lands in a token layout the bridge's field parse didn't map.
     if (!Number.isInteger(p.down) || !Number.isInteger(p.distance)) {
-      setWatchNote("Watching — no clear down/distance on screen yet.");
+      const dd = downDistanceAnywhere(res.rawText);
+      if (dd) { p.down = dd.down; p.distance = dd.distance; }
+    }
+    if (!Number.isInteger(p.down) || !Number.isInteger(p.distance)) {
+      setWatchNote("Watching — no clear down & distance yet. Fill more of the frame with the scoreboard.");
       return;
     }
+    const label = `${ordinal(p.down)} & ${p.distance === 0 ? "goal" : p.distance}`;
     const key = `${p.down}|${p.distance}`;
     if (key === lastSnapKey) {          // debounce: unchanged scoreboard, no re-fire
-      setWatchNote(`Watching — still ${ordinal(p.down)} and ${p.distance === 0 ? "goal" : p.distance}.`);
+      watchRead = label;
+      setWatchNote(`Watching — still ${label}.`);
       return;
     }
+    watchRead = label;
     lastSnapKey = key;
     const filled = applyScoreboard(p);
     justFilled = new Set(filled);
@@ -234,10 +251,31 @@ async function watchTick() {
     const line = instantRead();          // deterministic, no model
     showReadCard(line);                  // after renderPanel, so the card sticks
     svc.speak(line);
-    setWatchNote(`New down — ${ordinal(p.down)} and ${p.distance === 0 ? "goal" : p.distance}. Spoken.`);
+    setWatchNote(`New down — ${label}. Spoken.`);
   } finally {
     watchBusy = false;
+    watchPulse = false;
+    renderWatchUI();
   }
+}
+
+// First few OCR tokens, trimmed for the "saw:" line.
+function summariseOcr(raw) {
+  if (!raw) return "(nothing legible)";
+  return raw.split("|").map((t) => t.trim()).filter(Boolean).slice(0, 8).join(" · ").slice(0, 120);
+}
+
+// Down & distance from anywhere in the OCR text — score bug, field graphic, or a
+// token layout the bridge's structured parse didn't map. Pipes become spaces so
+// values split across OCR tokens ("3rd" | "& 7") still match.
+function downDistanceAnywhere(raw) {
+  if (!raw) return null;
+  const t = " " + String(raw).replace(/\|/g, " ").replace(/\s+/g, " ") + " ";
+  const m = t.match(/\b([1-4])\s*(?:st|nd|rd|th)?\s*(?:&|and)\s*(goal|\d{1,2})\b/i);
+  if (!m) return null;
+  const distance = /goal/i.test(m[2]) ? 0 : parseInt(m[2], 10);
+  if (!isFinite(distance) || distance > 99) return null;
+  return { down: parseInt(m[1], 10), distance };
 }
 
 function setWatchNote(t) { watchNote = t; renderWatchUI(); }
@@ -247,6 +285,17 @@ function renderWatchUI() {
     els.watchBtn.classList.toggle("accent", !watching);
   }
   if (els.watchNote) els.watchNote.textContent = watchNote;
+  // Live feedback so Watch is never a silent black box.
+  if (els.watchHud) els.watchHud.style.display = watching ? "block" : "none";
+  if (els.aimHint) els.aimHint.style.display = watching ? "block" : "none";
+  if (els.watchPulse) els.watchPulse.textContent = watchPulse ? "◉ scanning…" : (watching ? "○ idle" : "");
+  if (els.watchSaw) els.watchSaw.textContent = watchSaw ? `saw: ${watchSaw}` : (watching ? "saw: —" : "");
+  if (els.watchReadLine) els.watchReadLine.textContent = watchRead ? `read: ${watchRead}` : "";
+  if (els.teamNudge) {
+    els.teamNudge.textContent = (watching && (!sit.offense || !sit.defense))
+      ? "Pick both teams above for the full numbers — reading the situation meanwhile."
+      : "";
+  }
 }
 
 // ---------------------------------------------------------------- scoreboard scan
@@ -557,26 +606,60 @@ function renderPanel() {
           </div>
         </div>
 
-        <div style="display:flex; gap:8px; margin-top:8px;">
-          <button class="ghostBtn accent" data-el="scanBtn" style="flex:1;">📷 Scan scoreboard</button>
-          <button class="ghostBtn accent" data-el="watchBtn" style="flex:1;">👁 Watch</button>
-        </div>
-        <input type="file" data-el="scanInput" accept="image/*" capture="environment" style="display:none;">
-        <video data-el="watchVideo" playsinline muted autoplay
-          style="display:none; width:100%; border-radius:12px; margin-top:8px; background:#000; max-height:170px; object-fit:cover;"></video>
-        <div data-el="watchNote" style="font-size:11px; color:var(--warn); margin-top:6px; line-height:1.45;"></div>
-        <div style="font-size:10px; color:var(--dim); margin-top:4px; line-height:1.4;">
-          Watch reads the scoreboard from the camera while this screen is open and pointed at the TV —
-          it uses battery and only works in the foreground. Always-on is a glasses feature later.</div>
-        <div data-el="scanNote" style="font-size:11px; color:var(--dim); margin-top:6px; line-height:1.45;"></div>
-
-        <div class="fbRow ${hit("offense")} ${hit("defense")}" style="margin-top:8px;"><span class="fbLbl">Matchup</span><span class="fbSeg">
+        <!-- compact matchup row: needed for the numbers, but slim -->
+        <div class="fbRow ${hit("offense")} ${hit("defense")}" style="margin:6px 0 8px;"><span class="fbSeg">
           ${teamSelect("offense", sit.offense, "Offense")}
           <span style="color:var(--dim); font-size:12px;">vs</span>
           ${teamSelect("defense", sit.defense, "Defense")}
         </span></div>
 
-        <div style="border:1px solid var(--line); border-radius:14px; background:var(--panel-solid); padding:12px; margin-top:8px;">
+        <!-- primary controls -->
+        <div style="display:flex; gap:8px;">
+          <button class="ghostBtn accent" data-el="watchBtn" style="flex:1; padding:11px;">👁 Watch</button>
+          <button class="ghostBtn accent" data-el="scanBtn" style="flex:1; padding:11px;">📷 Scan</button>
+        </div>
+        <input type="file" data-el="scanInput" accept="image/*" capture="environment" style="display:none;">
+
+        <!-- CAMERA FIRST: big preview, tap to scan now -->
+        <video data-el="watchVideo" playsinline muted autoplay
+          style="display:none; width:100%; border-radius:14px; margin-top:10px; background:#000;
+                 height:46vh; max-height:460px; object-fit:cover; cursor:pointer;"></video>
+        <div data-el="watchHud" style="display:none; margin-top:6px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span data-el="watchPulse" style="font-family:var(--mono); font-size:11px; color:var(--warn);"></span>
+            <span data-el="watchReadLine" style="font-family:var(--mono); font-size:12px; font-weight:700; color:var(--good);"></span>
+            <span style="flex:1"></span>
+            <span style="font-size:10px; color:var(--dim);">checking every ~6s · tap the preview to scan now</span>
+          </div>
+          <div data-el="watchSaw" style="font-family:var(--mono); font-size:10.5px; color:var(--dim);
+               margin-top:4px; overflow-wrap:anywhere; line-height:1.4;"></div>
+        </div>
+
+        <!-- the instant read, prominent, right under the camera -->
+        <div data-el="readCard" style="display:none;"></div>
+
+        <div data-el="watchNote" style="font-size:11px; color:var(--warn); margin-top:6px; line-height:1.45;"></div>
+        <div data-el="teamNudge" style="font-size:11px; color:var(--gold); margin-top:4px; line-height:1.45;"></div>
+        <div data-el="aimHint" style="display:none; font-size:10.5px; color:var(--dim); margin-top:4px; line-height:1.45;">
+          Aim so the scoreboard fills more of the frame and hold steady — a small on-screen
+          scoreboard is hard to read from across a room.</div>
+        <div style="font-size:10px; color:var(--dim); margin-top:4px; line-height:1.4;">
+          Watch reads the scoreboard from the camera while this screen is open and pointed at the TV —
+          it uses battery and only works in the foreground. Always-on is a glasses feature later.</div>
+        <div data-el="scanNote" style="font-size:11px; color:var(--dim); margin-top:6px; line-height:1.45;"></div>
+
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="bigBtn" data-el="readBtn" style="flex:1; padding:13px;">📣 Read it</button>
+          <button class="ghostBtn" data-el="detailBtn">＋ Detail</button>
+        </div>
+
+        <div data-el="statCard"></div>
+
+        <!-- everything manual lives behind one expander, collapsed by default -->
+        <button class="ghostBtn" data-el="manualBtn" style="width:100%; margin-top:12px; text-align:left;">
+          ${manualOpen ? "▾" : "▸"} Set manually</button>
+        <div data-el="manualWrap" style="display:${manualOpen ? "block" : "none"};
+             border:1px solid var(--line); border-radius:14px; background:var(--panel-solid); padding:12px; margin-top:8px;">
           <div class="fbRow ${hit("down")}"><span class="fbLbl">Down</span><span class="fbSeg" data-group="down">
             ${[1,2,3,4].map((d) => `<button class="fbChip ${sit.down===d?"on":""}" data-down="${d}">${ordinal(d)}</button>`).join("")}
           </span></div>
@@ -606,16 +689,10 @@ function renderPanel() {
             <input type="text" data-el="see" value="${escapeAttr(sit.see)}" placeholder="e.g. shotgun, trips right, 11 personnel, single-high"
               autocomplete="off" style="width:100%;">
           </div>
+          <button class="ghostBtn" data-el="resetBtn" style="margin-top:10px;">Reset situation</button>
         </div>
 
-        <div data-el="statCard"></div>
-
-        <div style="display:flex; gap:8px; margin-top:12px;">
-          <button class="bigBtn" data-el="readBtn" style="flex:1; padding:13px;">📣 Read it</button>
-          <button class="ghostBtn" data-el="detailBtn">＋ Detail</button>
-          <button class="ghostBtn" data-el="resetBtn">Reset</button>
-        </div>
-        <div style="font-size:11px; color:var(--dim); text-align:center; margin-top:8px;">
+        <div style="font-size:11px; color:var(--dim); text-align:center; margin-top:10px;">
           Hands-free: open ✦ and say “third and long”, “red zone”, “read it”, or “explain cover two”.</div>
 
         <div style="margin-top:18px;">
@@ -630,11 +707,11 @@ function renderPanel() {
     </div>`;
   for (const el of w.querySelectorAll("[data-el]")) els[el.dataset.el] = el;
   els.panel = w;
-  // The read card has no [data-el], so it would survive this rebuild as a
-  // DETACHED node — and in Watch mode (which re-renders every new down) the
-  // spoken read would silently write into nothing. Drop it so it is recreated.
-  els.readCard = null;
   wirePanel();
+  // The read card is a real [data-el] now (it used to be created ad-hoc and
+  // survived re-renders as a detached node), so re-show the last read after a
+  // rebuild rather than losing it.
+  if (lastInstant && lastInstant.line) showReadCard(lastInstant.line);
   renderRefCards("coverages");
   renderStatCard();
   renderWatchUI();
@@ -716,6 +793,17 @@ function wirePanel() {
     svc.speak(extra);
   });
   els.watchBtn.addEventListener("click", toggleWatch);
+  els.manualBtn.addEventListener("click", () => {
+    manualOpen = !manualOpen;
+    els.manualWrap.style.display = manualOpen ? "block" : "none";
+    els.manualBtn.textContent = `${manualOpen ? "▾" : "▸"} Set manually`;
+  });
+  // Tapping the preview scans immediately instead of waiting for the next tick.
+  els.watchVideo.addEventListener("click", () => {
+    if (!watching) return;
+    setWatchNote("Scanning now…");
+    watchTick();
+  });
   els.resetBtn.addEventListener("click", () => { sit = freshSituation(); persist(); renderPanel(); });
 }
 
@@ -766,12 +854,13 @@ function refCard(title, body) {
     <div style="font-size:11.5px; color:var(--dim); line-height:1.5; margin-top:3px;">${body}</div></div>`;
 }
 
+// The read sits right under the camera and is the most readable thing on screen.
 function showReadCard(read) {
-  if (!els.readCard) {
-    els.readCard = document.createElement("div");
-    els.readCard.style.cssText = "border:1px solid rgba(77,163,255,0.4); border-radius:12px; background:rgba(77,163,255,0.06); padding:11px 13px; margin-top:10px; font-size:13px; line-height:1.5; white-space:pre-wrap;";
-    els.readBtn.parentElement.after(els.readCard);
-  }
+  if (!els.readCard) return;
+  els.readCard.style.cssText =
+    "display:block; border:1px solid rgba(77,163,255,0.45); border-radius:14px;" +
+    "background:rgba(77,163,255,0.09); padding:13px 15px; margin-top:10px;" +
+    "font-size:16px; line-height:1.5; font-weight:600; white-space:pre-wrap;";
   els.readCard.textContent = read;
 }
 
