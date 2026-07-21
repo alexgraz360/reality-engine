@@ -165,7 +165,7 @@ export const companion = {
   // fabricates. Image goes only to the user's own bridge, same as vision.
   async scoreboard(imageBase64) {
     if (!this.isConfigured()) {
-      return { ok: false, text: "The companion isn't configured yet — add your bridge in Settings first." };
+      return { ok: false, reason: "unconfigured", text: "The companion isn't configured yet — add your bridge in Settings first." };
     }
     const cfg = this.getConfig();
     const ctrl = new AbortController();
@@ -177,16 +177,22 @@ export const companion = {
         body: JSON.stringify({ imageBase64 }),
         signal: ctrl.signal,
       });
-      if (r.status === 401) return { ok: false, text: "The bridge rejected the token — re-check Settings → Companion." };
-      if (r.status === 429) return { ok: false, text: "Too many scans just now — wait a moment and try again." };
-      if (r.status === 400) return { ok: false, text: "The bridge refused that image — try again." };
-      if (!r.ok) return { ok: false, text: "The scoreboard reader isn't available on the bridge right now." };
+      // `reason` lets callers message accurately instead of blaming the bridge
+      // for every failure (a bad frame is NOT an unreachable host).
+      if (r.status === 401) return { ok: false, reason: "unauthorized", text: "The bridge rejected the token — re-check Settings → Companion." };
+      if (r.status === 429) return { ok: false, reason: "rate_limited", text: "Scanning too fast — easing off for a moment." };
+      if (r.status === 400) return { ok: false, reason: "bad_image", text: "The bridge couldn't use that image — re-aim and try again." };
+      if (!r.ok) return { ok: false, reason: "unavailable", text: "The scoreboard reader isn't available on the bridge right now." };
       const data = await r.json();
       return { ok: true, parsed: data.parsed || {}, rawText: data.rawText || "", stats: data.stats || null };
     } catch (err) {
+      console.warn("scoreboard request failed:", err);   // real error, for diagnosis
+      const timedOut = err && err.name === "AbortError";
       return {
         ok: false,
-        text: err && err.name === "AbortError"
+        reason: timedOut ? "timeout" : "offline",
+        error: String((err && err.message) || err),
+        text: timedOut
           ? "The scan took too long — try again."
           : "Couldn't reach the bridge to scan — is the host machine awake?",
       };

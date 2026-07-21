@@ -29,6 +29,7 @@ let watchNote = "";
 let manualOpen = false;       // "Set manually" expander — collapsed by default
 let watchPulse = false;       // scanning heartbeat
 let watchSaw = "";            // first few raw OCR tokens, so aiming is visible
+let teamsAutoSet = "";        // "" | "possession" | "unsure" — how teams got set
 let watchRead = "";           // "1st & 10" once a down is recognised
 
 const ZONES = [
@@ -39,6 +40,32 @@ const ZONES = [
   { id: "red-zone", label: "Red zone" },
   { id: "goal-line", label: "Goal line" },
 ];
+
+// The 32 teams by the codes the tendency data uses, plus the aliases broadcasts
+// and OCR actually produce (WSH/JAC/LAR/OAK/…). This is plain text the OCR
+// already returns — no training, no logo model. A trained logo classifier is
+// only a future fallback if abbreviation reads prove unreliable; not built.
+const NFL_TEAMS = {
+  ARI: "Cardinals", ATL: "Falcons", BAL: "Ravens", BUF: "Bills", CAR: "Panthers",
+  CHI: "Bears", CIN: "Bengals", CLE: "Browns", DAL: "Cowboys", DEN: "Broncos",
+  DET: "Lions", GB: "Packers", HOU: "Texans", IND: "Colts", JAX: "Jaguars",
+  KC: "Chiefs", LA: "Rams", LAC: "Chargers", LV: "Raiders", MIA: "Dolphins",
+  MIN: "Vikings", NE: "Patriots", NO: "Saints", NYG: "Giants", NYJ: "Jets",
+  PHI: "Eagles", PIT: "Steelers", SEA: "Seahawks", SF: "49ers", TB: "Buccaneers",
+  TEN: "Titans", WAS: "Commanders",
+};
+const TEAM_ALIASES = {
+  LAR: "LA", STL: "LA", SD: "LAC", SDG: "LAC", OAK: "LV", LVR: "LV",
+  WSH: "WAS", WFT: "WAS", JAC: "JAX", TAM: "TB", GNB: "GB", KAN: "KC",
+  SFO: "SF", NWE: "NE", NOR: "NO", ARZ: "ARI", CLV: "CLE", HST: "HOU",
+  BLT: "BAL", NNY: "NYG",
+};
+function canonicalTeam(code) {
+  if (!code) return null;
+  const c = String(code).trim().toUpperCase();
+  const mapped = TEAM_ALIASES[c] || c;
+  return NFL_TEAMS[mapped] ? mapped : null;
+}
 
 function freshSituation() {
   return {
@@ -161,6 +188,9 @@ export default {
   _forceWatch: (on) => { watching = on; if (!on) { clearInterval(watchTimer); watchTimer = 0; } lastSnapKey = ""; },
   _watchTick: () => watchTick(),                // drive one tick in tests
   _watchState: () => ({ watching, lastSnapKey, intervalMs: WATCH_MS }),
+  _capture: (video) => captureLiveFrame(video || els.watchVideo),   // readiness gate
+  _teamsAutoSet: () => teamsAutoSet,
+  _canonicalTeam: (c) => canonicalTeam(c),
   _applyScoreboard: (p) => applyScoreboard(p),  // field-mapping check
   _justFilled: () => [...justFilled],
   _set: (partial) => { Object.assign(sit, partial); persist(); if (els.panel) renderPanel(); },
@@ -211,17 +241,47 @@ function stopWatch(note) {
 }
 
 let watchBusy = false;
+let lastTapAt = 0;            // debounce manual taps so bursts can't spam the budget
+const TAP_MIN_GAP_MS = 1500;
+
+// A 429 means we're ahead of the budget: skip the next scheduled tick rather
+// than hammering it (the interval itself stays put).
+let skipNextTick = false;
+function backOff() { skipNextTick = true; }
 async function watchTick() {
   if (!watching || watchBusy) return;   // never stack requests
+  if (skipNextTick) { skipNextTick = false; setWatchNote("Easing off after a rate limit — resuming."); return; }
   const v = els.watchVideo;
-  if (!v || !v.videoWidth) return;
   watchBusy = true;
   watchPulse = true; renderWatchUI();    // heartbeat: prove it's alive
   try {
-    const b64 = frameToJpegBase64(v, v.videoWidth, v.videoHeight);
-    const res = await svc.companion.scoreboard(b64);
+    // Only send once there is a real, decoded, non-trivial frame. If the camera
+    // simply isn't ready yet, say so quietly and wait for the next tick — that
+    // is not an error worth alarming the user about.
+    const shot = captureLiveFrame(v);
+    if (!shot.ok) {
+      console.warn("football: live capture not usable —", shot.reason, shot.detail || "");
+      setWatchNote(shot.reason === "not_ready"
+        ? "Camera warming up — trying again in a moment."
+        : "Couldn't grab a clear camera frame — hold steady and re-aim.");
+      return;
+    }
+    const res = await svc.companion.scoreboard(shot.b64);
     if (!watching) return;              // toggled off mid-flight
-    if (!res.ok) { setWatchNote("Bridge unreachable — Watch paused reading; manual entry still works."); return; }
+    if (!res.ok) {
+      // Accurate taxonomy: only a real network failure blames the bridge.
+      console.warn("football: scoreboard failed —", res.reason, res.error || res.text);
+      setWatchNote({
+        rate_limited: "Scanning too fast — easing off for a moment.",
+        offline: "Bridge unreachable — is the host machine awake? Manual entry still works.",
+        timeout: "That scan took too long — trying again shortly.",
+        bad_image: "Couldn't grab a clear camera frame — hold steady and re-aim.",
+        unauthorized: "The bridge rejected the token — check Settings → Companion.",
+        unavailable: "The scoreboard reader isn't running on the bridge right now.",
+      }[res.reason] || res.text || "Scan failed — trying again shortly.");
+      if (res.reason === "rate_limited") backOff();
+      return;
+    }
     const p = { ...(res.parsed || {}) };
     // Show what the OCR actually caught, so the user can aim by watching it.
     watchSaw = summariseOcr(res.rawText);
@@ -291,6 +351,17 @@ function renderWatchUI() {
   if (els.watchPulse) els.watchPulse.textContent = watchPulse ? "◉ scanning…" : (watching ? "○ idle" : "");
   if (els.watchSaw) els.watchSaw.textContent = watchSaw ? `saw: ${watchSaw}` : (watching ? "saw: —" : "");
   if (els.watchReadLine) els.watchReadLine.textContent = watchRead ? `read: ${watchRead}` : "";
+  if (els.autoTeamNote) {
+    const name = (c) => NFL_TEAMS[c] || c;
+    els.autoTeamNote.textContent =
+      teamsAutoSet === "unsure"
+        ? `Teams auto-set from the scoreboard — if ${name(sit.offense)} aren't the ones with the ball, tap ⇄ to swap.`
+      : teamsAutoSet === "possession"
+        ? `Teams auto-set from the scoreboard (${name(sit.offense)} have the ball).`
+      : teamsAutoSet === "swapped"
+        ? `Swapped — ${name(sit.offense)} on offense.`
+        : "";
+  }
   if (els.teamNudge) {
     els.teamNudge.textContent = (watching && (!sit.offense || !sit.defense))
       ? "Pick both teams above for the full numbers — reading the situation meanwhile."
@@ -301,6 +372,32 @@ function renderWatchUI() {
 // ---------------------------------------------------------------- scoreboard scan
 // One frame → the bridge's OCR + parse → auto-fill. Everything stays editable;
 // fields the bridge couldn't read are left alone rather than guessed.
+// Capture one frame from the LIVE camera video. This is the path that was
+// failing: the old guard only checked videoWidth, which a video reports as soon
+// as metadata arrives — before any frame has actually decoded. Drawing then
+// produced a blank/tiny JPEG, the bridge rejected it (400), and the caller
+// mislabelled that as "bridge unreachable". Now we require a decoded frame AND
+// verify the encoded image is non-trivial before it is ever sent.
+const MIN_FRAME_B64 = 4000;   // ~3 KB of JPEG — a blank frame encodes far smaller
+function captureLiveFrame(video) {
+  if (!video) return { ok: false, reason: "no_video" };
+  // HAVE_CURRENT_DATA (2) means there is a frame to draw, not just metadata.
+  if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+    return { ok: false, reason: "not_ready", detail: `readyState=${video.readyState} ${video.videoWidth}x${video.videoHeight}` };
+  }
+  let b64;
+  try {
+    b64 = frameToJpegBase64(video, video.videoWidth, video.videoHeight);
+  } catch (err) {
+    console.warn("football: frame capture threw:", err);
+    return { ok: false, reason: "draw_failed", detail: String(err && err.message || err) };
+  }
+  if (!b64 || b64.length < MIN_FRAME_B64) {
+    return { ok: false, reason: "empty_frame", detail: `encoded ${b64 ? b64.length : 0} chars` };
+  }
+  return { ok: true, b64 };
+}
+
 function frameToJpegBase64(source, w, h) {
   const MAX = 1024; // a bit larger than /vision: small text needs the pixels
   const scale = Math.min(1, MAX / Math.max(w, h));
@@ -364,16 +461,32 @@ function applyScoreboard(p) {
     const [m] = p.clock.split(":").map(Number);
     sit.twoMinute = (p.quarter === 2 || p.quarter === 4) && m < 2;
   }
-  // Possession picks the offense when it matches a team we have data for.
+  // AUTO-DETECT THE MATCHUP from the two abbreviations the OCR read. If
+  // possession is clear it orients offence/defence; if not, both are set and the
+  // user gets a one-tap swap. Always correctable.
   const teams = dataReady ? footballData.getTeams() : [];
-  if (p.possession && teams.includes(p.possession)) { sit.offense = p.possession; filled.push("offense"); }
+  const known = (c) => { const t = canonicalTeam(c); return t && teams.includes(t) ? t : null; };
+  const a = known(p.homeTeam), b = known(p.awayTeam);
+  const poss = known(p.possession);
+  if (a && b && a !== b) {
+    if (poss === a || poss === b) {
+      sit.offense = poss; sit.defense = poss === a ? b : a;
+      teamsAutoSet = "possession";
+    } else {
+      sit.offense = a; sit.defense = b;   // orientation unknown → offer the swap
+      teamsAutoSet = "unsure";
+    }
+    filled.push("offense", "defense");
+  } else if (poss && !sit.offense) {
+    sit.offense = poss; teamsAutoSet = "possession"; filled.push("offense");
+  }
   // Scores → margin from the offense's point of view (needs to know who has it).
-  const pairs = [[p.homeTeam, p.homeScore], [p.awayTeam, p.awayScore]].filter(([t, s]) => t && Number.isInteger(s));
+  const pairs = [[known(p.homeTeam), p.homeScore], [known(p.awayTeam), p.awayScore]]
+    .filter(([t, s]) => t && Number.isInteger(s));
   if (pairs.length === 2 && sit.offense) {
     const mine = pairs.find(([t]) => t === sit.offense);
     const theirs = pairs.find(([t]) => t !== sit.offense);
     if (mine && theirs) { sit.margin = mine[1] - theirs[1]; filled.push("score"); }
-    if (theirs && teams.includes(theirs[0]) && !sit.defense) { sit.defense = theirs[0]; filled.push("defense"); }
   }
   // "PHI 35" → a field zone, but only if we know whose side that is.
   if (typeof p.yardLine === "string" && sit.offense) {
@@ -607,11 +720,12 @@ function renderPanel() {
         </div>
 
         <!-- compact matchup row: needed for the numbers, but slim -->
-        <div class="fbRow ${hit("offense")} ${hit("defense")}" style="margin:6px 0 8px;"><span class="fbSeg">
+        <div class="fbRow ${hit("offense")} ${hit("defense")}" style="margin:6px 0 4px;"><span class="fbSeg">
           ${teamSelect("offense", sit.offense, "Offense")}
-          <span style="color:var(--dim); font-size:12px;">vs</span>
+          <button class="fbChip" data-el="swapBtn" title="Swap offense and defense">⇄</button>
           ${teamSelect("defense", sit.defense, "Defense")}
         </span></div>
+        <div data-el="autoTeamNote" style="font-size:10.5px; color:var(--gold); margin:0 2px 8px; line-height:1.4;"></div>
 
         <!-- primary controls -->
         <div style="display:flex; gap:8px;">
@@ -767,7 +881,11 @@ function wirePanel() {
   root.addEventListener("click", onPanelClick);
   els.see.addEventListener("change", () => { sit.see = els.see.value; persist(); });
   root.querySelectorAll("[data-team]").forEach((sel) => {
-    sel.addEventListener("change", () => { sit[sel.dataset.team] = sel.value; persist(); renderStatCard(); });
+    sel.addEventListener("change", () => {
+      sit[sel.dataset.team] = sel.value;
+      teamsAutoSet = "";              // user took over; drop the auto-set note
+      persist(); renderStatCard(); renderWatchUI();
+    });
   });
   els.clock.addEventListener("change", () => { sit.clock = els.clock.value.trim(); persist(); });
   els.scanBtn.addEventListener("click", startScan);
@@ -793,14 +911,25 @@ function wirePanel() {
     svc.speak(extra);
   });
   els.watchBtn.addEventListener("click", toggleWatch);
+  els.swapBtn.addEventListener("click", () => {
+    const o = sit.offense; sit.offense = sit.defense; sit.defense = o;
+    sit.margin = -sit.margin;              // margin is from the offence's view
+    if (teamsAutoSet) teamsAutoSet = "swapped";
+    persist(); renderPanel();
+  });
   els.manualBtn.addEventListener("click", () => {
     manualOpen = !manualOpen;
     els.manualWrap.style.display = manualOpen ? "block" : "none";
     els.manualBtn.textContent = `${manualOpen ? "▾" : "▸"} Set manually`;
   });
   // Tapping the preview scans immediately instead of waiting for the next tick.
+  // Tap-to-scan uses the SAME gated capture as the interval (via watchTick),
+  // debounced so rapid taps surface as our own back-off rather than a 429.
   els.watchVideo.addEventListener("click", () => {
     if (!watching) return;
+    const now = Date.now();
+    if (now - lastTapAt < TAP_MIN_GAP_MS) { setWatchNote("Easy — one scan at a time."); return; }
+    lastTapAt = now;
     setWatchNote("Scanning now…");
     watchTick();
   });
