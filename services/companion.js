@@ -163,7 +163,7 @@ export const companion = {
   // ONE downscaled frame of a TV score bug → { parsed fields, rawText }. Fields
   // the bridge could not read clearly come back null and stay manual — it never
   // fabricates. Image goes only to the user's own bridge, same as vision.
-  async scoreboard(imageBase64) {
+  async scoreboard(imageBase64, opts = {}) {
     if (!this.isConfigured()) {
       return { ok: false, reason: "unconfigured", text: "The companion isn't configured yet — add your bridge in Settings first." };
     }
@@ -174,7 +174,9 @@ export const companion = {
       const r = await fetch(scrubEndpoint(cfg.endpoint) + "/scoreboard", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: "Bearer " + scrub(cfg.token) },
-        body: JSON.stringify({ imageBase64 }),
+        // fast: OCR + regex only on the bridge (no LLM parse) — Watch mode uses
+        // this so a tick costs ~0.5s instead of ~8s.
+        body: JSON.stringify({ imageBase64, ...(opts.fast ? { fast: true } : {}) }),
         signal: ctrl.signal,
       });
       // `reason` lets callers message accurately instead of blaming the bridge

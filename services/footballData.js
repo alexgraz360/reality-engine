@@ -193,14 +193,21 @@ export const footballData = {
     const deviations = [];   // {size, text} — biggest one becomes the "tell"
     let lean = null;         // "pass" | "run" — the data's direction; the call the model must not flip
 
-    // --- offense: situational pass/run rate + league rank ---
+    // --- offense: LEAD WITH THE CALL, then the rate that backs it ---
+    // "NE passes 52%" is trivia; "Call: toss-up, slight pass lean" is a read.
+    // Confidence wording scales with how far the rate sits from 50/50 so a
+    // 52% never sounds like a 96%.
     if (tend && tend.dd && tend.dd.n >= MIN_N) {
       const p = tend.dd.pass, lg = tend.leagueDd && tend.leagueDd.pass;
       const r = vendoredProvider.rankPass(tend.team, tend.ddKey);
       const rankTxt = r ? `, ${ordinal(r.rank)} in the league` : "";
       lean = p >= 0.5 ? "pass" : "run";
-      if (p >= 0.5) sentences.push(`${tend.team} passes ${pct(p)} on ${dd}${rankTxt}.`);
-      else sentences.push(`${tend.team} runs ${pct(1 - p)} on ${dd}${rankTxt}.`);
+      const strength = Math.abs(p - 0.5);
+      const call = strength >= 0.2 ? `Call: ${lean}` :
+                   strength >= 0.06 ? `Call: ${lean} lean` :
+                   `Call: toss-up, slight ${lean} lean`;
+      const rate = p >= 0.5 ? `pass ${pct(p)}` : `run ${pct(1 - p)}`;
+      sentences.push(`${call} — ${tend.team} ${rate} on ${dd}${rankTxt}.`);
       numbers.push(`${tend.team} pass ${pct(p)} (lg ${pct(lg)})${r ? ` · #${r.rank}` : ""}`);
       if (lg != null) deviations.push({
         size: Math.abs(p - lg),
@@ -209,8 +216,23 @@ export const footballData = {
       });
     } else if (tend && tend.overall) {
       lean = tend.overall.passRate >= 0.5 ? "pass" : "run";
-      sentences.push(`${tend.team} passes ${pct(tend.overall.passRate)} overall.`);
+      sentences.push(`Call: ${lean} lean — ${tend.team} pass ${pct(tend.overall.passRate)} overall.`);
       numbers.push(`${tend.team} pass ${pct(tend.overall.passRate)} overall`);
+    }
+
+    // --- what to LOOK for: the offense's identity in one sentence ---
+    // (personnel + shotgun + tempo — the data was already on the card, but a
+    // read should say it out loud.)
+    if (tend && tend.fingerprint && tend.fingerprint.offense) {
+      const fo = tend.fingerprint.offense;
+      const bits = [];
+      if (fo.topPersonnel) {
+        const share = tend.personnel && tend.personnel[fo.topPersonnel];
+        bits.push(`${fo.topPersonnel} personnel${share != null ? ` ${pct(share)} of the time` : ""}`);
+      }
+      if (fo.shotgun != null) bits.push(`shotgun ${pct(fo.shotgun)}`);
+      if (fo.noHuddle != null && fo.noHuddle >= 0.1) bits.push(`they push tempo (${pct(fo.noHuddle)} no-huddle)`);
+      if (bits.length) sentences.push(`Look for ${bits.join(", ")}.`);
     }
 
     // --- defense: blitz/pressure for this exact down & distance ---

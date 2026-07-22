@@ -193,6 +193,7 @@ export default {
   _capture: (video) => captureLiveFrame(video || els.watchVideo),   // readiness gate
   _teamsAutoSet: () => teamsAutoSet,
   _canonicalTeam: (c) => canonicalTeam(c),
+  _teamsFromText: (t) => teamsFromText(t),
   _applyScoreboard: (p) => applyScoreboard(p),  // field-mapping check
   _justFilled: () => [...justFilled],
   _set: (partial) => { Object.assign(sit, partial); persist(); if (els.panel) renderPanel(); },
@@ -268,7 +269,9 @@ async function watchTick() {
         : "Couldn't grab a clear camera frame — hold steady and re-aim.");
       return;
     }
-    const res = await svc.companion.scoreboard(shot.b64);
+    // fast: regex parse only on the bridge (~0.5s/tick). The ~8s LLM parse was
+    // the per-play latency Alex hit; teams are matched from the raw tokens here.
+    const res = await svc.companion.scoreboard(shot.b64, { fast: true });
     if (!watching) return;              // toggled off mid-flight
     if (!res.ok) {
       // Accurate taxonomy: only a real network failure blames the bridge.
@@ -287,6 +290,12 @@ async function watchTick() {
     const p = { ...(res.parsed || {}) };
     // Show what the OCR actually caught, so the user can aim by watching it.
     watchSaw = summariseOcr(res.rawText);
+    // Fast mode returns no teams — match the two team codes from the raw tokens
+    // ourselves (the same 32-code + alias map used for auto-teams).
+    if (!p.homeTeam || !p.awayTeam) {
+      const codes = teamsFromText(res.rawText);
+      if (codes.length >= 2) { p.homeTeam = p.homeTeam || codes[0]; p.awayTeam = p.awayTeam || codes[1]; }
+    }
     // Safety net: catch "3rd & 7" / "1ST AND 10" ANYWHERE in the raw text, even
     // when it lands in a token layout the bridge's field parse didn't map.
     if (!Number.isInteger(p.down) || !Number.isInteger(p.distance)) {
@@ -325,6 +334,19 @@ async function watchTick() {
 function summariseOcr(raw) {
   if (!raw) return "(nothing legible)";
   return raw.split("|").map((t) => t.trim()).filter(Boolean).slice(0, 8).join(" · ").slice(0, 120);
+}
+
+// The first two distinct team codes appearing in the OCR tokens, in display
+// order. Word-boundary split keeps "GATE"/"SECTION" from ever matching.
+function teamsFromText(raw) {
+  if (!raw) return [];
+  const out = [];
+  for (const tok of String(raw).toUpperCase().split(/[^A-Z]+/)) {
+    const t = canonicalTeam(tok);
+    if (t && !out.includes(t)) out.push(t);
+    if (out.length === 2) break;
+  }
+  return out;
 }
 
 // Down & distance from anywhere in the OCR text — score bug, field graphic, or a
