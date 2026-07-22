@@ -194,12 +194,113 @@ export default {
   _teamsAutoSet: () => teamsAutoSet,
   _canonicalTeam: (c) => canonicalTeam(c),
   _teamsFromText: (t) => teamsFromText(t),
+  _lookFormation: (b64) => lookFormation(b64),
   _applyScoreboard: (p) => applyScoreboard(p),  // field-mapping check
   _justFilled: () => [...justFilled],
   _set: (partial) => { Object.assign(sit, partial); persist(); if (els.panel) renderPanel(); },
   _read: () => generateRead(),
   _reference: () => ref,
 };
+
+// ---------------------------------------------------------------- formation look
+// THE CHEAP EXPERIMENT: point the existing local vision model (moondream) at
+// one frame and get a COARSE formation guess — shotgun vs under center, how
+// spread out, backfield count. Big shapes only; it cannot read jersey-level
+// detail from a broadcast and we never pretend it can. The guess lands in
+// "what you see" (editable) so the read and ＋Detail pick it up naturally.
+// This is one /vision call per tap (5/min budget) — never part of the Watch loop.
+// ONE binary question — chosen by testing, not by hope. On a synthetic pre-snap
+// frame moondream answered QB depth correctly on 3 of 3 phrasings, but
+// CONFIDENTLY HALLUCINATED on everything else it was asked: counting players
+// ("14 white footballs"), spread-vs-tight ("a 3x3 grid of dots"), which side the
+// receivers were on ("No" when trips were plainly right), and pass-vs-run
+// ("a running play" on an 11-personnel shotgun spread). Compound multi-part
+// prompts returned pure noise ("1. Center of field"). So we ask the single
+// question it can answer and refuse to ask the ones it makes up.
+// Three phrasings of the same binary question — all three answered correctly in
+// testing, but each only answers *some* of the time, so we cycle through them.
+const FORMATION_PHRASINGS = [
+  "Is the quarterback in shotgun formation or under center?",
+  "Is the quarterback standing close behind the line of players, or several steps back away from them?",
+  "In this football play, is the quarterback under center or in shotgun?",
+];
+
+// Only trust an answer that clearly names one of the two options.
+function readFormationAnswer(text) {
+  const t = (text || "").toLowerCase();
+  const shotgun = /\bshot\s?gun\b/.test(t);
+  const under = /\bunder cent(er|re)\b/.test(t);
+  if (shotgun && !under) return "shotgun";
+  if (under && !shotgun) return "under center";
+  return null;   // ambiguous or hallucinated — report nothing rather than a guess
+}
+
+let looking = false;
+async function lookFormation(b64FromFile) {
+  if (looking) return;
+  let b64 = b64FromFile;
+  if (!b64) {
+    // Live path: grab off the Watch stream with the same readiness gate.
+    const shot = captureLiveFrame(els.watchVideo);
+    if (!shot.ok) {
+      // No usable live frame → fall back to the camera-photo input.
+      pendingLook = true;
+      els.scanInput.value = "";
+      els.scanInput.click();
+      return;
+    }
+    b64 = shot.b64;
+  }
+  looking = true;
+  setLookNote("Looking at the field… (vision takes a few seconds)");
+  renderLookUI();
+  try {
+    // moondream often ignores the question and just captions the scene, and it
+    // does that inconsistently — the SAME question on the SAME frame answered
+    // correctly once and captioned the next time. So ask up to 3 times and take
+    // the first reply that actually names one of the two options.
+    let answer = null, lastText = "", attempts = 0;
+    for (const phrasing of FORMATION_PHRASINGS) {
+      attempts++;
+      const res = await svc.companion.vision(b64, phrasing);
+      if (!res.ok) {
+        setLookNote(res.text + " The look is optional — the read works without it.");
+        return;
+      }
+      lastText = res.text;
+      answer = readFormationAnswer(res.text);
+      if (answer) break;
+      console.warn(`football: vision attempt ${attempts} didn't answer the question:`, res.text);
+      setLookNote(`Looking… (attempt ${attempts + 1})`);
+    }
+    if (!answer) {
+      console.warn("football: vision gave no usable formation answer after", attempts, "tries. Last:", lastText);
+      setLookNote("Couldn't tell shotgun from under center — the vision model just described the scene instead. " +
+        "Try a clearer pre-snap frame, or type what you see.");
+      return;
+    }
+    // Merge into "what you see" without clobbering anything typed by hand.
+    const kept = (sit.see || "").replace(/\b(shotgun|under center)\b,?\s*/gi, "").trim().replace(/^,\s*/, "");
+    sit.see = kept ? `${answer}, ${kept}` : answer;
+    persist();
+    if (els.see) els.see.value = sit.see;
+    setLookNote(`Vision: ${answer} — one coarse read of a single frame, and it can be wrong. ` +
+      `It only judges shotgun vs under center; it can't count receivers or read alignment. Edit under "Set manually".`);
+  } finally {
+    looking = false;
+    renderLookUI();
+  }
+}
+let pendingLook = false;   // routes the next photo-input capture to formation, not scan
+function setLookNote(t) { lookNote = t; renderLookUI(); }
+let lookNote = "";
+function renderLookUI() {
+  if (els.lookBtn) {
+    els.lookBtn.disabled = looking;
+    els.lookBtn.textContent = looking ? "Looking…" : "👀 Look";
+  }
+  if (els.lookNote) els.lookNote.textContent = lookNote;
+}
 
 // ---------------------------------------------------------------- Watch mode
 // Point the phone at the screen and it calls out each new down by itself: a live
@@ -784,6 +885,7 @@ function renderPanel() {
         <div style="display:flex; gap:8px;">
           <button class="ghostBtn accent" data-el="watchBtn" style="flex:1; padding:11px;">👁 Watch</button>
           <button class="ghostBtn accent" data-el="scanBtn" style="flex:1; padding:11px;">📷 Scan</button>
+          <button class="ghostBtn accent" data-el="lookBtn" style="flex:1; padding:11px;">👀 Look</button>
         </div>
         <input type="file" data-el="scanInput" accept="image/*" capture="environment" style="display:none;">
 
@@ -814,6 +916,11 @@ function renderPanel() {
           Watch reads the scoreboard from the camera while this screen is open and pointed at the TV —
           it uses battery and only works in the foreground. Always-on is a glasses feature later.</div>
         <div data-el="scanNote" style="font-size:11px; color:var(--dim); margin-top:6px; line-height:1.45;"></div>
+        <div data-el="lookNote" style="font-size:11px; color:var(--accent); margin-top:6px; line-height:1.45;"></div>
+        <div style="font-size:10px; color:var(--dim); margin-top:4px; line-height:1.4;">
+          👀 Look is an experiment: the local vision model guesses <em>shotgun vs under center</em> from one
+          frame. That's all it can do reliably — it can't count receivers or read alignments, so everything
+          else about the formation is still the season tendencies, not what's on your screen.</div>
 
         <div style="display:flex; gap:8px; margin-top:12px;">
           <button class="bigBtn" data-el="readBtn" style="flex:1; padding:13px;">📣 Read it</button>
@@ -944,8 +1051,21 @@ function wirePanel() {
   els.scanBtn.addEventListener("click", startScan);
   els.scanInput.addEventListener("change", () => {
     const f = els.scanInput.files && els.scanInput.files[0];
-    if (f) scanFromFile(f);
+    if (!f) { pendingLook = false; return; }
+    if (pendingLook) {
+      // This capture was requested by 👀 Look, not Scan — same input, different brain.
+      pendingLook = false;
+      const url = URL.createObjectURL(f);
+      const img = new Image();
+      img.onload = () => { const b64 = frameToJpegBase64(img, img.naturalWidth, img.naturalHeight); URL.revokeObjectURL(url); lookFormation(b64); };
+      img.onerror = () => { URL.revokeObjectURL(url); setLookNote("Couldn't read that photo — try again."); };
+      img.src = url;
+      return;
+    }
+    scanFromFile(f);
   });
+  els.lookBtn.addEventListener("click", () => lookFormation());
+  renderLookUI();
   renderScanUI();
   // Read it = the INSTANT path. No await, no model — composed and spoken now.
   els.readBtn.addEventListener("click", () => {
