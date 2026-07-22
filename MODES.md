@@ -134,6 +134,47 @@ after `footballData.ready()` resolves in `init()`, injects them into the analyst
 prompt via `getSystemContext()`, and shows a couple of raw numbers on the card.
 To add the second provider: append it to `PROVIDERS`; nothing else changes.
 
+## Baseball prediction providers (the same seam, one sport over)
+
+Baseball mode answers "what's coming and what happens?" through the seam in
+[`services/baseballData.js`](services/baseballData.js). It is built so **Alex's
+own analytics site (`mithrandir-metrics`) becomes provider #2** — its predictive
+models are sharper than public aggregates — **without touching the mode**.
+
+A provider implements:
+
+```js
+{
+  id, label,
+  async ready(),                                     // load once; true if usable
+  pitchers(): [{id, name}],  batters(): [{id, name}],
+  predict(pitcherId, batterId, { balls, strikes }, situation)
+    // -> { pitch:{code,name,share}, location:{cell,phrase,share}, locationGrid,
+    //      outcome:{hit,walk,k,out,n,basis}, zoneRate, mix, fallbacks[] }  (partial is fine)
+}
+```
+
+`PROVIDERS` is ordered and `getPrediction()` **overlays later results onto earlier
+ones field-by-field**. That matters here: provider #2 can sharpen only the pitch
+call and still inherit public outcome percentages and location for everything it
+doesn't model. Verified: overlaying a stub `mithrandir` provider replaced the
+pitch (slider 71%) while the location ("low and away") and outcome (K 49%,
+`basis: batter`) were inherited from public data, with `sources: ["statcast",
+"mithrandir"]`.
+
+Provider #1 today is the vendored public **Statcast** dataset
+(`data/baseball/{pitchers,batters,league}.json` — compact aggregates only, built
+offline by a local script that is never committed). Thin cells are omitted at
+build time; the provider then falls back to the league baseline and **labels it**
+(`outcome.basis: "league"`, plus a `fallbacks` list the card and read surface).
+
+**To add Alex's site as provider #2:** his data lives locally on his desktop, so
+the provider should read it locally ($0/local, no cloud) — the repo is
+`github.com/alexgraz360/mithrandir-metrics`, and whatever it exposes (saved model
+files, generated CSV/JSON, a local DB, or a local read endpoint) gets wrapped in
+the interface above and appended to `PROVIDERS`. Nothing else changes; it will be
+preferred automatically and labelled as his model.
+
 ## Reference implementation
 
 [`modes/pendulum.js`](modes/pendulum.js) exercises the whole surface: gesture-gated

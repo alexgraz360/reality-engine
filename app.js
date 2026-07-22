@@ -37,6 +37,12 @@ const REGISTRY = [
     load: () => import("./modes/football.js"),
   },
   {
+    id: "baseball", title: "Baseball · read the pitch", family: "Learn", icon: "⚾",
+    permissions: ["mic", "camera"],
+    blurb: "Pitcher, batter, count — get the likely pitch and location plus the live hit/walk/strikeout odds for this exact spot. Historical tendencies, not a prediction.",
+    load: () => import("./modes/baseball.js"),
+  },
+  {
     id: "pendulum", title: "Pendulum · period & g", family: "Learn", icon: "🪀",
     permissions: ["motion"],
     blurb: "Swing the phone on a string — measures period T from the gyroscope and computes g in real units.",

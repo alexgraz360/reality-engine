@@ -176,7 +176,8 @@ export const companion = {
         headers: { "content-type": "application/json", authorization: "Bearer " + scrub(cfg.token) },
         // fast: OCR + regex only on the bridge (no LLM parse) — Watch mode uses
         // this so a tick costs ~0.5s instead of ~8s.
-        body: JSON.stringify({ imageBase64, ...(opts.fast ? { fast: true } : {}) }),
+        body: JSON.stringify({ imageBase64, ...(opts.fast ? { fast: true } : {}),
+          ...(opts.sport ? { sport: opts.sport } : {}) }),
         signal: ctrl.signal,
       });
       // `reason` lets callers message accurately instead of blaming the bridge
