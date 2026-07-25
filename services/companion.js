@@ -163,6 +163,43 @@ export const companion = {
   // ONE downscaled frame of a TV score bug → { parsed fields, rawText }. Fields
   // the bridge could not read clearly come back null and stay manual — it never
   // fabricates. Image goes only to the user's own bridge, same as vision.
+  // ---- raw OCR (bridge /ocr) ----
+  // One downscaled frame → the recognized TEXT (for Translate's READ). Same
+  // one-frame-to-your-own-bridge path as vision/scoreboard.
+  async ocr(imageBase64) {
+    if (!this.isConfigured()) {
+      return { ok: false, reason: "unconfigured", text: "The companion isn't configured yet — add your bridge in Settings first." };
+    }
+    const cfg = this.getConfig();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60_000);
+    try {
+      const r = await fetch(scrubEndpoint(cfg.endpoint) + "/ocr", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + scrub(cfg.token) },
+        body: JSON.stringify({ imageBase64 }),
+        signal: ctrl.signal,
+      });
+      if (r.status === 401) return { ok: false, reason: "unauthorized", text: "The bridge rejected the token — re-check Settings → Companion." };
+      if (r.status === 429) return { ok: false, reason: "rate_limited", text: "Too many scans just now — wait a moment and try again." };
+      if (r.status === 400) return { ok: false, reason: "bad_image", text: "The bridge couldn't use that image — re-aim and try again." };
+      if (!r.ok) return { ok: false, reason: "unavailable", text: "The reader isn't available on the bridge right now." };
+      const data = await r.json();
+      return { ok: true, text: data.text || "", lines: data.lines || [], stats: data.stats || null };
+    } catch (err) {
+      console.warn("ocr request failed:", err);
+      const timedOut = err && err.name === "AbortError";
+      return {
+        ok: false,
+        reason: timedOut ? "timeout" : "offline",
+        error: String((err && err.message) || err),
+        text: timedOut ? "That took too long — try again." : "Couldn't reach the bridge — is the host machine awake?",
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
   async scoreboard(imageBase64, opts = {}) {
     if (!this.isConfigured()) {
       return { ok: false, reason: "unconfigured", text: "The companion isn't configured yet — add your bridge in Settings first." };

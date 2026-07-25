@@ -44,6 +44,12 @@ const REGISTRY = [
     load: () => import("./modes/baseball.js"),
   },
   {
+    id: "translate", title: "Translate · read & talk", family: "Live", icon: "🌐",
+    permissions: ["mic", "camera"],
+    blurb: "Point at a sign or menu and hear it in your language, or hold a two-way spoken conversation. Machine translation on the local model — best on common languages.",
+    load: () => import("./modes/translate.js"),
+  },
+  {
     id: "pendulum", title: "Pendulum · period & g", family: "Learn", icon: "🪀",
     permissions: ["motion"],
     blurb: "Swing the phone on a string — measures period T from the gyroscope and computes g in real units.",
@@ -78,7 +84,6 @@ const ROADMAP = [
   { family: "Learn", title: "🏀 Form coach", note: "Pose + spoken cues for your shot" },
   { family: "Build", title: "🔧 Guide: Repair & Assembly", note: "Same Guide engine, new step packs" },
   { family: "Build", title: "🚗 Automotive", note: "Diagnose, guide the fix, log the history" },
-  { family: "Live", title: "🌐 Interpreter", note: "Two-way live translation, spoken" },
   { family: "Live", title: "🧭 Navigator", note: "AR pins, arrow and distance" },
   { family: "Live", title: "🎭 Emotion", note: "Expression cues only — ethics pass required first" },
 ];
@@ -101,6 +106,20 @@ const services = {
     const willSpeak = speakReply(String(text || ""), () => setStatus("idle"));
     if (willSpeak) setStatus("speaking");
     return willSpeak;
+  },
+  // Language-aware voice surface for Translate (additive; companion path
+  // untouched). speakInLanguage routes English→Piper, foreign→a matching system
+  // voice, and refuses to speak a language with no voice rather than mangle it.
+  // A mode building its own recognizer must stopDictation() the shell's single
+  // instance first so the two never run at once (mic/TTS never overlap).
+  voice: {
+    speak: (text, lang, onDone) => speakInLanguage(text, lang, onDone),
+    stopSpeak: () => stopSpeaking(),
+    systemVoiceForLang: (lang) => systemVoiceForLang(lang),
+    hasVoiceForLang: (lang) => !!systemVoiceForLang(lang),
+    stopShellDictation: () => stopDictation(true),
+    isShellListening: () => listening,
+    Recognition: () => (window.SpeechRecognition || window.webkitSpeechRecognition) || null,
   },
 };
 
@@ -721,6 +740,51 @@ function speakReply(text, onDone) {
   }
   speakNow(text, onDone);
   return true;
+}
+
+// Language-aware speech for Translate: English stays on Piper (our natural
+// voice); a FOREIGN target uses the system speechSynthesis voice whose language
+// matches, because speaking Spanish with an English voice is unintelligible. If
+// no system voice exists for that language we DON'T speak it — the caller shows
+// the text instead of mangling it. Returns { spoken, reason?, voice? }.
+function systemVoiceForLang(langCode) {
+  if (!ttsSupported) return null;
+  const voices = speechSynthesis.getVoices();
+  const base = String(langCode || "").slice(0, 2).toLowerCase();
+  if (!base) return null;
+  return voices.find((v) => v.lang && v.lang.toLowerCase() === langCode.toLowerCase() && v.localService)
+    || voices.find((v) => v.lang && v.lang.toLowerCase() === langCode.toLowerCase())
+    || voices.find((v) => v.lang && v.lang.toLowerCase().slice(0, 2) === base && v.localService)
+    || voices.find((v) => v.lang && v.lang.toLowerCase().slice(0, 2) === base)
+    || null;
+}
+function speakInLanguage(text, langCode, onDone) {
+  const t = String(text || "").trim();
+  if (!t) return { spoken: false, reason: "empty" };
+  const base = String(langCode || "").slice(0, 2).toLowerCase();
+  // English → our Piper/system path exactly as the companion uses it.
+  if (base === "en") { const ok = speakReply(t, onDone); return { spoken: ok, reason: ok ? null : "muted", engine: "piper/system" }; }
+  if (!speakToggle.checked) return { spoken: false, reason: "muted" };
+  const voice = systemVoiceForLang(langCode);
+  if (!voice) return { spoken: false, reason: "no-voice" };   // don't mispronounce
+  const session = ++speakSession;
+  try { speechSynthesis.cancel(); } catch (e) {}
+  setTimeout(() => {
+    if (session !== speakSession) return;
+    const chunks = chunkText(t);
+    let finished = 0;
+    chunks.forEach((c) => {
+      const u = new SpeechSynthesisUtterance(c);
+      u.lang = voice.lang;          // critical: tag the utterance's language
+      u.voice = voice;
+      u.rate = currentRate();
+      u.onend = () => { if (++finished === chunks.length && session === speakSession && onDone) onDone(); };
+      u.onerror = () => { if (++finished === chunks.length && session === speakSession && onDone) onDone(); };
+      speechSynthesis.speak(u);
+    });
+    if (speechSynthesis.paused) { try { speechSynthesis.resume(); } catch (e) {} }
+  }, 60);
+  return { spoken: true, reason: null, engine: "system", voice: { name: voice.name, lang: voice.lang } };
 }
 
 function stopSpeaking() {

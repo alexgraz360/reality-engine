@@ -165,7 +165,7 @@ export function _clampLog() { return clampLog.slice(); }
 // Greedy word-wrap into <= maxLines lines of <= width chars, for callers that
 // have a sentence to show rather than pre-shaped short lines. The last line is
 // ellipsised when the text overflows — the full text should live in `spoken`.
-export function wrap(text, width = LINE_MAX, maxLines = MAX_LINES) {
+export function wrap(text, width = LIMITS.LINE_MAX, maxLines = LIMITS.MAX_LINES) {
   const words = String(text || "").split(/\s+/).filter(Boolean);
   const lines = [];
   let cur = "";
