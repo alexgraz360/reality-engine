@@ -12,6 +12,7 @@ import companion from "./services/companion.js";
 import localActions from "./services/actions.js";
 import knowledge from "./services/knowledge.js";
 import glasses from "./services/glasses.js";
+import router from "./services/router.js";
 
 // ---------------------------------------------------------------- mode registry
 // USABLE modes only — every entry here renders an "Open" card under its family.
@@ -835,6 +836,10 @@ function wireRecognition(rec) {
   rec.onresult = (e) => {
     let interim = "";
     for (const r of e.results) (r.isFinal ? (finalTranscript += r[0].transcript) : (interim += r[0].transcript));
+    // WAKE MODE: the pre-trigger stream never reaches the input box, the
+    // transcript, storage, or any action — it is inspected for the phrase and
+    // then discarded. Only what follows the trigger is ever used.
+    if (wakeMode) { handleWakeAudio(finalTranscript + interim); return; }
     input.value = (finalTranscript + interim).trim();
   };
   rec.onerror = (e) => {
@@ -871,6 +876,9 @@ function wireRecognition(rec) {
     listening = false;
     micBtn.classList.remove("listening");
     if (uiStatus === "listening") setStatus("idle");
+    // In wake mode the cycle simply restarts (or stops on inactivity); nothing
+    // heard before a trigger is ever sent anywhere.
+    if (wakeMode) { finalTranscript = ""; discardDictation = false; onWakeCycleEnd(); return; }
     const send = !discardDictation && finalTranscript && input.value.trim();
     discardDictation = false;
     finalTranscript = "";
@@ -912,8 +920,121 @@ function stopDictation(discard = false) {
 
 let recStartCount = 0; // verification hook: how many times rec.start() actually ran
 
+// ---------------------------------------------------------------- wake word
+// FOREGROUND ONLY, OFF BY DEFAULT. This runs the SAME single recognizer in a
+// different loop — there is no second instance, and the `listening` guard,
+// benign aborted/no-speech handling, and mic/TTS never-overlap rule all still
+// apply. Nothing heard before the trigger phrase is stored or acted on.
+//
+// SEAM: detectWake() is the whole detection surface. A proper offline
+// wake-word engine can replace this one function later without touching the
+// router or the loop. The naive continuous-listen here may prove flaky on iOS
+// (see our `aborted` history) — that's the documented upgrade path.
+const WAKE_DEFAULT_PHRASE = "hey engine";   // distinctive: two words, uncommon pair
+const WAKE_IDLE_MS = 5 * 60 * 1000;         // auto-stop after 5 min with no trigger
+let wakeMode = false;                        // is the recognizer in wake-listen?
+let wakeEnabled = false;                     // the persisted toggle
+let wakePhrase = WAKE_DEFAULT_PHRASE;
+let wakeLastTriggerAt = 0;
+let wakeArmedText = "";                      // transient; cleared every cycle
+
+// The detection seam. Returns { triggered, rest } and NOTHING else — no storage,
+// no side effects, no retention.
+function detectWake(transcript, phrase) {
+  const t = String(transcript || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ");
+  const p = String(phrase || "").toLowerCase().trim();
+  if (!p) return { triggered: false, rest: "" };
+  const i = t.indexOf(p);
+  if (i < 0) return { triggered: false, rest: "" };
+  return { triggered: true, rest: t.slice(i + p.length).trim() };
+}
+
+function handleWakeAudio(transcript) {
+  const { triggered, rest } = detectWake(transcript, wakePhrase);
+  if (!triggered) { wakeArmedText = ""; return; }   // discarded — never stored
+  wakeLastTriggerAt = Date.now();
+  wakeArmedText = rest;
+  setWakeIndicator(true, rest ? `heard: ${rest}` : "listening for your request…");
+  // Let the utterance finish so we capture the whole request, then hand off.
+  if (rest && rest.split(/\s+/).length >= 2) {
+    stopDictation(true);                 // ends this cycle; onend routes it
+  }
+}
+
+function onWakeCycleEnd() {
+  const pending = wakeArmedText;
+  wakeArmedText = "";
+  if (pending) {
+    // Everything after the trigger goes to the ROUTER via the normal ask path,
+    // identical to the tap path — same gates, same fallthrough.
+    setWakeIndicator(wakeEnabled, "routing…");
+    const input = document.getElementById("companionQuestion");
+    input.value = pending;
+    askCompanion();
+    // resume watching once the request has been handled
+    setTimeout(() => { if (wakeEnabled) startWakeListen(); }, 1200);
+    return;
+  }
+  if (!wakeEnabled) { setWakeIndicator(false); return; }
+  if (Date.now() - wakeLastTriggerAt > WAKE_IDLE_MS) {
+    stopWake("Wake word paused after 5 quiet minutes — tap 👂 to resume.");
+    return;
+  }
+  setTimeout(() => { if (wakeEnabled && !listening) startWakeListen(); }, 400);
+}
+
+function startWakeListen() {
+  if (!SR || !wakeEnabled || listening || micDenied) return;
+  if (asking || looking) { setTimeout(startWakeListen, 1500); return; }  // never over a request
+  wakeMode = true;
+  stopSpeaking();                     // mic and speaker never run together
+  const rec = getRecognition();       // the SAME single instance
+  listening = true;
+  finalTranscript = "";
+  discardDictation = false;
+  setWakeIndicator(true, `listening for “${wakePhrase}”`);
+  try { rec.start(); recStartCount++; }
+  catch (err) { listening = false; setTimeout(() => { if (wakeEnabled) startWakeListen(); }, 800); }
+}
+
+function startWake() {
+  if (!SR) { transcriptNote("Voice input isn't supported in this browser."); return; }
+  wakeEnabled = true;
+  storage.set("wake.enabled", true);
+  wakeLastTriggerAt = Date.now();
+  startWakeListen();
+  syncWakeUI();
+}
+function stopWake(note) {
+  wakeEnabled = false;
+  wakeMode = false;
+  wakeArmedText = "";
+  storage.set("wake.enabled", false);
+  stopDictation(true);
+  setWakeIndicator(false);
+  syncWakeUI();
+  if (note) transcriptNote(note);
+}
+
+// An always-visible indicator whenever the mic is live — the user must never
+// have to wonder whether it's listening.
+function setWakeIndicator(on, detail) {
+  const el = document.getElementById("wakeIndicator");
+  if (!el) return;
+  el.style.display = on ? "flex" : "none";
+  const d = document.getElementById("wakeIndicatorText");
+  if (d) d.textContent = detail || "mic on";
+}
+function syncWakeUI() {
+  const t = document.getElementById("wakeToggle");
+  if (t) t.checked = wakeEnabled;
+  const p = document.getElementById("wakePhraseInput");
+  if (p && p.value !== wakePhrase) p.value = wakePhrase;
+}
+
 function startListening() {
   if (!SR || listening) return; // the guard: auto-start + manual tap can never double-start
+  wakeMode = false;             // a manual tap is always a normal dictation
   stopSpeaking(); // mic and speaker never run together
   const input = document.getElementById("companionQuestion");
   const rec = getRecognition();
@@ -1027,7 +1148,218 @@ window.RE_voiceDebug = {
   lastRecall: () => lastRecall,
   lookAndRemember: (b64) => lookAndRemember(b64),
   knowledge: knowledge,
+  // voice router verification hooks
+  router: router,
+  routerCtx: () => routerCtx(),
+  loadModeCapabilities: () => loadModeCapabilities(),
+  askText: (t) => { document.getElementById("companionQuestion").value = t; return askCompanion(); },
+  // wake-word verification hooks — drive the REAL handlers without a live mic
+  wake: {
+    detect: (t, p) => detectWake(t, p || wakePhrase),
+    feed: (t) => handleWakeAudio(t),
+    cycleEnd: () => onWakeCycleEnd(),
+    setMode: (v) => { wakeMode = !!v; },
+    state: () => ({ wakeMode, wakeEnabled, wakePhrase, armed: wakeArmedText, listening }),
+    recognizerInstance: () => recognition,
+    recStarts: () => recStartCount,
+  },
 };
+
+// ---------------------------------------------------------------- voice router
+// The shell registers the GLOBAL capabilities (memory, notes, reminders, look,
+// open-a-mode) through exactly the same interface modes use. The router itself
+// knows about none of them.
+//
+// Anything side-effectful builds its action locally and hands it to the SAME
+// confirmation gate as before — the router changes how a request arrives, never
+// whether it's confirmed.
+
+// "remember the passport is in the desk drawer" → the fact, minus the command.
+function stripLead(text, re) { return String(text).replace(re, "").trim().replace(/^that\s+/i, ""); }
+// The thing a memory is ABOUT: the words before the first relational word, so
+// "the passport is in the desk drawer" → "passport", not "passport is in".
+function subjectOf(fact) {
+  const head = String(fact).replace(/^(the|my|a|an)\s+/i, "")
+    .split(/\s+(?:is|are|was|were|goes|lives|sits|in|on|under|at|with|works)\b/i)[0];
+  return head.trim().replace(/[.,]$/, "").split(/\s+/).slice(0, 4).join(" ").slice(0, 60);
+}
+// A capability that opened a confirmation gate has fully handled the request —
+// the gate is the response. Returning this (rather than null) stops the router
+// falling through to the companion and firing a needless model call.
+const GATED = { text: "" };
+
+// Deterministic time parsing for the common reminder phrasings. Anything more
+// exotic returns null and the capability declines, so the request falls through
+// to today's companion path unchanged.
+function parseWhen(text) {
+  const t = String(text).toLowerCase();
+  let m = t.match(/\bin\s+(\d{1,3})\s*(min|mins|minute|minutes|hour|hours|hr|hrs)\b/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    const ms = /hour|hr/.test(m[2]) ? n * 3600000 : n * 60000;
+    return new Date(Date.now() + ms);
+  }
+  m = t.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+  if (m) {
+    const d = new Date();
+    let h = parseInt(m[1], 10);
+    const min = m[2] ? parseInt(m[2], 10) : 0;
+    if (m[3] === "pm" && h < 12) h += 12;
+    if (m[3] === "am" && h === 12) h = 0;
+    if (!m[3] && h <= 7) h += 12;          // "at 6" in the evening, sensibly
+    d.setHours(h, min, 0, 0);
+    if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+    return d;
+  }
+  return null;
+}
+
+function registerGlobalCapabilities() {
+  router.register({
+    id: "memory.remember", label: "Remember it", sideEffect: true,
+    patterns: [/^\s*(remember|keep in mind|don'?t forget)\b/i, /\bmake a memory\b/i],
+    examples: ["remember the passport is in the desk drawer", "remember my oven runs hot"],
+    run: (text) => {
+      const fact = stripLead(text, /^\s*(remember|keep in mind|don'?t forget)\s*/i);
+      if (!fact) return null;              // decline → normal companion answer
+      const kind = /\bthis is\b|\bworks (with|at)\b|\bshe |\bhe /i.test(fact) ? "person"
+        : /\bin the\b|\bon the\b|\bunder\b|\bdrawer|shelf|cupboard/i.test(fact) ? "thing" : "fact";
+      requestActionConfirm({ action: "remember", text: fact, subject: subjectOf(fact), kind });
+      return GATED;                         // the gate IS the response
+    },
+  });
+
+  router.register({
+    id: "memory.forget", label: "Forget it", sideEffect: true,
+    patterns: [/^\s*(forget|delete the memory|remove the memory)\b/i],
+    examples: ["forget the backpack", "forget what I said about the landlord"],
+    run: (text) => {
+      const ref = stripLead(text, /^\s*(forget|delete the memory( about)?|remove the memory( about)?)\s*/i)
+        .replace(/^(about|what i said about)\s+/i, "");
+      if (!ref) return null;
+      requestActionConfirm({ action: "forget", ref });
+      return GATED;
+    },
+  });
+
+  // Recall deliberately DECLINES: the normal companion path already retrieves
+  // memories globally with the when/where and hallucination guards. Routing it
+  // anywhere else would duplicate that logic and risk regressing it. Registered
+  // so the decision is visible in the log rather than silently unmatched.
+  router.register({
+    id: "memory.recall", label: "Recall a memory",
+    patterns: [/\bwhere (did|do) i (put|leave)\b/i, /\bwhere('?s| is| are) my\b/i,
+               /\bwhat did i say about\b/i, /^\s*who is\b/i],
+    examples: ["where did I put my passport", "who is Maya", "what did I say about the landlord"],
+    run: () => null,   // → today's answer path, unchanged
+  });
+
+  router.register({
+    id: "actions.reminder", label: "Set a reminder", sideEffect: true,
+    // "remind me" anywhere, so "can you remind me to call mum" routes too — and
+    // so a phrase containing BOTH remember and remind is caught as ambiguous
+    // rather than silently resolved to whichever pattern happened to be first.
+    patterns: [/\bremind me\b/i, /\bset a reminder\b/i],
+    examples: ["remind me in 10 minutes to check the oven", "remind me at 6pm to call"],
+    run: (text) => {
+      const when = parseWhen(text);
+      if (!when) return null;              // exotic phrasing → companion parses it
+      let what = String(text)
+        .replace(/^\s*remind me\s*/i, "").replace(/\bset a reminder\s*/i, "")
+        .replace(/\bin\s+\d{1,3}\s*(min|mins|minute|minutes|hour|hours|hr|hrs)\b/i, "")
+        .replace(/\bat\s+\d{1,2}(?::\d{2})?\s*(am|pm)?\b/i, "")
+        .replace(/^\s*(to|that)\s+/i, "").trim();
+      if (!what) return null;
+      requestActionConfirm({ action: "add_reminder", text: what, when: when.toISOString(), dueMs: when.getTime() });
+      return GATED;
+    },
+  });
+
+  router.register({
+    id: "actions.note", label: "Make a note", sideEffect: true,
+    patterns: [/^\s*(make|add|take|write) a note\b/i, /^\s*note (that|to)\b/i],
+    examples: ["make a note to buy milk", "note that the bin goes out Tuesday"],
+    run: (text) => {
+      const note = stripLead(text, /^\s*((make|add|take|write) a note|note)\s*(that|to)?\s*/i);
+      if (!note) return null;
+      requestActionConfirm({ action: "add_note", note });
+      return GATED;
+    },
+  });
+
+  // Runs IN PLACE — looking at something shouldn't yank you out of your mode.
+  router.register({
+    id: "vision.look", label: "Look at this",
+    patterns: [/^\s*(what is|what'?s) (this|that)\b/i, /\blook at (this|that)\b/i,
+               /\bwhat am i (looking at|holding)\b/i],
+    examples: ["what is this", "look at this", "what am I looking at"],
+    run: () => { lookBtn.click(); return GATED; },  // the vision flow speaks for itself
+  });
+
+  // "open astronomy" / "switch to football" — patterns built from the REGISTRY,
+  // so a new mode is routable the moment it's registered, with no router edit.
+  const modeWords = REGISTRY.map((e) => e.id).join("|");
+  router.register({
+    id: "shell.openMode", label: "Open a mode",
+    patterns: [new RegExp(`\\b(open|switch to|go to|launch|start)\\s+(the\\s+)?(${modeWords})\\b`, "i")],
+    examples: REGISTRY.slice(0, 3).map((e) => `open ${e.id}`),
+    run: async (text) => {
+      const m = String(text).match(new RegExp(`\\b(?:open|switch to|go to|launch|start)\\s+(?:the\\s+)?(${modeWords})\\b`, "i"));
+      if (!m) return null;
+      const entry = REGISTRY.find((e) => e.id === m[1].toLowerCase());
+      if (!entry) return null;
+      if (active && active.entry && active.entry.id === entry.id) return `Already in ${entry.title}.`;
+      await openMode(entry);
+      return `Opened ${entry.title}.`;
+    },
+  });
+}
+
+registerGlobalCapabilities();
+
+// Mode capabilities are discovered from describeCapabilities() by importing each
+// registered mode ONCE, lazily, on first use. Modes have no import-time side
+// effects, and a failing import is skipped rather than breaking routing.
+let modeCapsLoaded = false;
+async function loadModeCapabilities() {
+  if (modeCapsLoaded) return;
+  modeCapsLoaded = true;
+  await Promise.all(REGISTRY.map(async (entry) => {
+    try {
+      const mod = (await entry.load()).default;
+      if (typeof mod.describeCapabilities !== "function") return;
+      for (const cap of mod.describeCapabilities() || []) {
+        router.register({ ...cap, modeId: cap.modeId || entry.id, label: cap.label || entry.title });
+      }
+    } catch (err) {
+      console.warn(`router: couldn't read capabilities for "${entry.id}" —`, err && err.message);
+    }
+  }));
+}
+
+// The context the router needs — it owns none of this itself.
+function routerCtx() {
+  return {
+    activeModeId: active && active.entry ? active.entry.id : null,
+    ask: (p, c, h, o) => companion.ask(p, c, h, o),
+    // A switch must be visible even with the companion card closed — otherwise
+    // the app silently changing modes under you is confusing.
+    announce: (msg) => { showToast(msg); transcriptNote(msg); },
+    switchTo: async (modeId) => {
+      const entry = REGISTRY.find((e) => e.id === modeId);
+      if (!entry) throw new Error(`no such mode: ${modeId}`);
+      await openMode(entry);
+    },
+    // Lets a mode capability reuse its own handleCommand once it's active,
+    // instead of duplicating that parsing in the capability.
+    callActiveCommand: (text) => {
+      if (active && active.mod && typeof active.mod.handleCommand === "function") {
+        try { return active.mod.handleCommand(text); } catch (e) { return null; }
+      }
+      return null;
+    },
+  };
+}
 
 // ---- ask flow (typed or dictated), multi-turn ----
 let asking = false;
@@ -1070,6 +1402,29 @@ async function askCompanion() {
       }
       return;
     }
+  }
+
+  // Voice intent router: reach the right capability from ANYWHERE, switching
+  // modes when needed. Runs AFTER the active mode's handleCommand (so "next" in
+  // Guide still wins) and BEFORE the companion — anything it doesn't claim
+  // falls through to exactly today's answer. That's the regression bar.
+  try {
+    await loadModeCapabilities();
+    const routed = await router.route(question, routerCtx());
+    if (routed.handled) {
+      input.value = "";
+      if (routed.text) {
+        // A clarifying question is a question, not an answer — never spoken as
+        // if the action happened, and never stored as a completed turn.
+        handleAssistantReply(question, { ok: true, text: routed.text, stats: null }, { fromMode: true });
+        glasses.send({ title: routed.clarify ? "?" : "Done", lines: glasses.wrap(routed.text), spoken: routed.text, holdMs: 6000 });
+      }
+      pullActiveGlance();
+      refreshFabStatus();
+      return;
+    }
+  } catch (err) {
+    console.error("router failed — falling through to the companion:", err);
   }
 
   const context = activeContext(); // re-read at ask time — freshest reading
@@ -1652,6 +2007,28 @@ document.getElementById("openMemoriesBtn").addEventListener("click", () => {
   renderMemoriesSheet();
   openSheet("memoriesSheet");
 });
+
+// ---- wake word wiring (persisted; OFF by default) ----
+wakePhrase = String(storage.get("wake.phrase", WAKE_DEFAULT_PHRASE) || WAKE_DEFAULT_PHRASE).toLowerCase();
+// NOTE: deliberately NOT auto-started from storage. Enabling a live microphone
+// is a decision the user makes each session, with a gesture — not something a
+// page load does to them.
+document.getElementById("wakeToggle").addEventListener("change", (e) => {
+  primeTTS();
+  if (e.target.checked) startWake(); else stopWake("Wake word off.");
+});
+document.getElementById("wakePhraseInput").addEventListener("change", (e) => {
+  const p = String(e.target.value || "").trim().toLowerCase();
+  wakePhrase = p || WAKE_DEFAULT_PHRASE;
+  storage.set("wake.phrase", wakePhrase);
+  e.target.value = wakePhrase;
+  if (wakePhrase.split(/\s+/).length < 2 || wakePhrase.length < 6) {
+    transcriptNote(`“${wakePhrase}” is short — common or single words false-trigger a lot. Two distinctive words work best.`);
+  }
+  if (wakeEnabled) { stopDictation(true); }   // pick up the new phrase next cycle
+});
+document.getElementById("wakeStopBtn").addEventListener("click", () => stopWake("Wake word off."));
+syncWakeUI();
 
 // ---------------------------------------------------------------- config deep-link
 let toastTimer = 0;

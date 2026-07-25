@@ -642,6 +642,18 @@ export default {
     els = {}; root = null; sit = null; lastInstant = null;
   },
 
+  // Voice intent router: what Baseball answers from anywhere. Static data.
+  describeCapabilities() {
+    return [{
+      id: "baseball.count", label: "Baseball", needsMode: true,
+      patterns: [/\b(full count|\d\s*(?:-|and)\s*\d\s+count)\b/i,
+                 /\bwhat('?s| is) (he|the pitcher) (throwing|going to throw)\b/i,
+                 /\bread (the )?pitch\b/i],
+      examples: ["full count", "1-2 count", "what's he throwing", "read the pitch"],
+      run: (text, ctx) => (ctx.callActiveCommand ? ctx.callActiveCommand(text) : null),
+    }];
+  },
+
   getContext() { return buildContext(); },
 
   // Glasses hook (additive): the instant read + this count's live odds as one

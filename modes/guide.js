@@ -67,6 +67,17 @@ export default {
     els = {}; root = null;
   },
 
+  // Voice intent router: what Guide answers from anywhere. Static data.
+  describeCapabilities() {
+    return [{
+      id: "guide.start", label: "Guide", needsMode: true,
+      patterns: [/\bguide me (through|to make)\b/i, /\b(walk|talk) me through (making|cooking)\b/i,
+                 /\bhelp me (cook|make)\b/i],
+      examples: ["guide me through making pasta", "walk me through cooking chicken", "help me cook rice"],
+      run: (text, ctx) => (ctx.callActiveCommand ? ctx.callActiveCommand(text) : null),
+    }];
+  },
+
   getContext() {
     if (phase === "pick") return "Guide Mode — choosing a recipe to cook.";
     if (phase === "finish") return `Guide Mode — just finished cooking “${recipe.title}”.`;

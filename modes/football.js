@@ -124,6 +124,20 @@ export default {
   // Analyst framing + a few situation-relevant reference lines. The shell passes
   // this to companion.ask as systemExtra, so BOTH "read it" and any fall-through
   // football question are primed — without touching the shared prompt.
+  // Voice intent router: what Football answers from anywhere. Static data.
+  describeCapabilities() {
+    return [{
+      id: "football.situation", label: "Football", needsMode: true,
+      patterns: [/\b(1st|2nd|3rd|4th|first|second|third|fourth)\s+(and|&)\s+(\d{1,2}|goal|long|short|inches)\b/i,
+                 /\bread (the )?(play|game|defense|defence)\b/i,
+                 /\bwhat('?s| is) the (call|read) here\b/i],
+      examples: ["third and long", "first and ten", "read the play", "what's the call here"],
+      // The mode's own handleCommand already understands these phrasings, so the
+      // router just hands the text over once the mode is active.
+      run: (text, ctx) => (ctx.callActiveCommand ? ctx.callActiveCommand(text) : null),
+    }];
+  },
+
   getSystemContext() { return buildSystemContext(); },
 
   // Glasses hook (additive): the instant read as one short card. The adapter

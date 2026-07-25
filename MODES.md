@@ -42,6 +42,12 @@ export default {
                                   // (e.g. an analyst persona). Additive; modes without
                                   // it are unaffected.
 
+  // ---- OPTIONAL: declare what this mode can be asked to do from anywhere ----
+  describeCapabilities() {},      // return an array of capabilities for the voice
+                                  // intent router (below). STATIC data — it is read
+                                  // without the mode being open. Additive; modes
+                                  // without it are simply never routed to.
+
   // ---- OPTIONAL: a glanceable card for a heads-up display ----
   getGlanceCard() {},             // return a GlanceCard (below) representing the mode's
                                   // current state, or null. The shell pulls this while the
@@ -226,6 +232,53 @@ the provider should read it locally ($0/local, no cloud) — the repo is
 files, generated CSV/JSON, a local DB, or a local read endpoint) gets wrapped in
 the interface above and appended to `PROVIDERS`. Nothing else changes; it will be
 preferred automatically and labelled as his model.
+
+## The voice intent router & `describeCapabilities()`
+
+Say anything, anywhere, and it reaches the right capability — switching modes for
+you. Without this, a spoken request only reaches the mode you already opened,
+which is unusable on glasses.
+
+[`services/router.js`](services/router.js) knows **nothing about any specific
+mode**. Every capability is registered, and matching is driven purely by what
+each capability declares, so **adding a mode never requires editing the router**:
+
+```js
+describeCapabilities() {
+  return [{
+    id: "translate.read",          // unique
+    label: "Translate",            // used when announcing a switch
+    needsMode: true,               // router switches to this mode first
+    sideEffect: false,             // true = writes/deletes (never routed on a guess)
+    patterns: [/\bwhat does (this|that) say\b/i],   // decisive: a match scores 1.0
+    examples: ["read this sign"],  // weaker keyword evidence, capped below 1.0
+    run: (text, ctx) => "…",       // string | Promise | null to decline
+  }];
+}
+```
+
+`run()` may return `null` to **decline** after inspecting the text — the request
+then falls through to the normal companion answer, which is exactly what
+`memory.recall` does (global retrieval already handles it correctly, so routing
+it elsewhere would risk regressing it). `ctx.callActiveCommand(text)` lets a
+mode capability reuse its own `handleCommand` once the mode is active instead of
+duplicating that parsing.
+
+**Deterministic first, model last.** A declared pattern matches in microseconds
+with **no model call** — the same discipline as the football instant read. The
+local model is used only as a tightly-constrained fallback (it may return one
+registered id or "none", validated against the registry) and **only on a
+near-miss**: input with no capability overlap at all skips it entirely, so a
+general question never pays for a classification round-trip. Every decision is
+logged (`router.recentDecisions()`).
+
+**Precedence is unchanged:** the active mode's `handleCommand` still wins first
+(so "next" in Guide is still Guide's), then the router, then today's companion
+answer. Anything the router doesn't claim behaves exactly as before — that is
+the regression bar. Side-effectful routes still pass through the **same
+confirmation gate**; the router changes how a request arrives, never whether
+it's confirmed. If two readings are close and either writes something, the
+router **asks one short question** instead of guessing.
 
 ## Reference implementation
 

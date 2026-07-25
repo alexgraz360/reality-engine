@@ -335,6 +335,34 @@ export default {
   stop() { stopTalk(true); svc && svc.voice && svc.voice.stopSpeak(); },
   teardown() { stopTalk(true); if (svc && svc.voice) svc.voice.stopSpeak(); els = {}; root = null; last = null; },
 
+  // What this mode can be asked to do from ANYWHERE (voice intent router).
+  // Static data — safe to read without the mode being open. The router owns no
+  // knowledge of Translate; it only reads what's declared here.
+  describeCapabilities() {
+    return [
+      {
+        id: "translate.read", label: "Translate", needsMode: true,
+        patterns: [/\b(what does (this|that) say|read (this|that|the sign|the menu)|translate (this|that|it))\b/i,
+                   /\bwhat('?s| is) (this|that) (say|sign|menu)\b/i],
+        examples: ["what does this say", "read this sign", "translate this menu"],
+        run: () => { startRead(); return "Reading it now…"; },
+      },
+      {
+        id: "translate.say", label: "Translate a phrase", needsMode: true, sideEffect: false,
+        patterns: [/\bhow do (i|you) say\b/i, /\bsay .+ in (spanish|french|german|italian|portuguese|japanese|chinese|korean|russian|arabic|hindi|dutch)\b/i],
+        examples: ["how do I say where is the station", "say two coffees in spanish"],
+        run: (text) => {
+          const m = String(text).match(/how do (?:i|you) say\s+(.+?)(?:\s+in\s+\w+)?\s*$/i)
+                 || String(text).match(/\bsay\s+(.+?)\s+in\s+\w+\s*$/i);
+          const phrase = m ? m[1].trim().replace(/^["'](.*)["']$/, "$1") : "";
+          if (!phrase) return null;    // decline → falls through to the companion
+          handleSpoken(phrase, "you");
+          return `Translating “${phrase}”…`;
+        },
+      },
+    ];
+  },
+
   getContext() { return buildContext(); },
 
   // Voice/typed commands from the shell's ✦ input while Translate is active.
