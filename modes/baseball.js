@@ -644,6 +644,26 @@ export default {
 
   getContext() { return buildContext(); },
 
+  // Glasses hook (additive): the instant read + this count's live odds as one
+  // short card. The adapter clamps; we hand over the natural pieces.
+  getGlanceCard() {
+    const pred = prediction();
+    const r = pred ? baseballData.instantRead(pred, names()) : null;
+    if (!r || !r.line) return null;
+    // Lens-native lines, each kept under the 24-char HUD width. Pitch + share
+    // on one line; location on its own so neither gets truncated.
+    const lines = [];
+    if (r.pitch) lines.push(`${r.pitch.name} ${Math.round(r.pitch.share * 100)}%`);
+    if (r.location) lines.push(r.location.phrase);
+    if (r.outcome) lines.push(`K ${Math.round(r.outcome.k * 100)}% hit ${Math.round(r.outcome.hit * 100)}% BB ${Math.round(r.outcome.walk * 100)}%`);
+    return {
+      title: `${sit.balls}-${sit.strikes} count`,
+      lines: lines.length ? lines : (r.numbers || []).slice(0, 3),
+      spoken: r.line,
+      holdMs: 7000,
+    };
+  },
+
   // Shell offers every ✦ input here first.
   handleCommand(text) {
     const t = String(text || "").toLowerCase().trim();

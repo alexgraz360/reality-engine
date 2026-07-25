@@ -11,6 +11,7 @@ import storage from "./services/storage.js";
 import companion from "./services/companion.js";
 import localActions from "./services/actions.js";
 import knowledge from "./services/knowledge.js";
+import glasses from "./services/glasses.js";
 
 // ---------------------------------------------------------------- mode registry
 // USABLE modes only — every entry here renders an "Open" card under its family.
@@ -94,6 +95,7 @@ let active = null; // { mod, entry }
 const services = {
   sensors, overlay, storage, companion,
   actions: localActions, // notes/reminders layer (Guide timers reuse it)
+  glasses,               // adapter — modes may send() a GlanceCard directly
   // Speak through the shell's normal voice path (Piper/system, session-guarded).
   speak(text) {
     const willSpeak = speakReply(String(text || ""), () => setStatus("idle"));
@@ -101,6 +103,81 @@ const services = {
     return willSpeak;
   },
 };
+
+// ---- Glance cards (glasses adapter, additive) --------------------------------
+// The app pushes companion/action cards at their events; modes are PULLED via
+// getGlanceCard(). While the preview is open we poll the active mode lightly so
+// a read that changed through the mode's own panel is reflected — the adapter's
+// rate cap keeps that from flashing. No mode internals are touched.
+let lastPolledGlance = "";
+function pullActiveGlance() {
+  if (!active || !active.mod || typeof active.mod.getGlanceCard !== "function") return;
+  let card;
+  try { card = active.mod.getGlanceCard(); } catch (e) { console.error("getGlanceCard failed:", e); return; }
+  if (!card) return;
+  const sig = JSON.stringify([card.title, card.lines]);
+  if (sig === lastPolledGlance) return;   // unchanged — don't re-send
+  lastPolledGlance = sig;
+  glasses.send(card);
+}
+// ---- Glasses preview (the develop-before-hardware harness) -------------------
+// A subscriber renders each dispatched card into the circular lens exactly as
+// the Halo would, honouring the same clamped card the BLE transport will get.
+const glassesPreviewEl = document.getElementById("glassesPreview");
+const glassesTitleEl = document.getElementById("glassesTitle");
+const glassesLinesEl = document.getElementById("glassesLines");
+const glassesEmptyEl = document.getElementById("glassesEmpty");
+let glancePollTimer = 0;
+
+glasses.subscribe((card) => {
+  if (!card) {
+    glassesTitleEl.textContent = "";
+    glassesLinesEl.innerHTML = "";
+    glassesEmptyEl.style.display = "block";
+    glassesPreviewEl.classList.remove("alert");
+    return;
+  }
+  glassesEmptyEl.style.display = "none";
+  glassesTitleEl.textContent = card.title || "";
+  glassesLinesEl.innerHTML = "";
+  for (const line of card.lines) {
+    const d = document.createElement("div");
+    d.textContent = line;          // textContent — never HTML; cards are pure text
+    glassesLinesEl.appendChild(d);
+  }
+  glassesPreviewEl.classList.toggle("alert", card.priority === "alert");
+});
+
+function setGlassesPreview(on) {
+  glassesPreviewEl.style.display = on ? "flex" : "none";
+  clearInterval(glancePollTimer);
+  if (on) {
+    pullActiveGlance();  // show the active mode's current card immediately
+    // Poll the active mode lightly so a read changed via its own panel shows up;
+    // the adapter's rate cap means this can never flash.
+    glancePollTimer = setInterval(pullActiveGlance, 800);
+  }
+}
+const glassesPreviewToggle = document.getElementById("glassesPreviewToggle");
+glassesPreviewToggle.addEventListener("change", () => setGlassesPreview(glassesPreviewToggle.checked));
+document.getElementById("glassesPreviewClose").addEventListener("click", () => {
+  glassesPreviewToggle.checked = false; setGlassesPreview(false);
+});
+
+// A short spoken companion/vision answer, condensed into a glance card. The
+// headline is the mode (or "Companion"); the body is the first sentence(s).
+function glanceFromAnswer(text, kind) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return;
+  // Wrap the answer across the lens so it reads as a short paragraph rather than
+  // hard-truncated sentence fragments; the FULL answer is always in `spoken`.
+  glasses.send({
+    title: kind === "look" ? "👁 Look" : "Companion",
+    lines: glasses.wrap(clean, glasses.LIMITS.LINE_MAX, glasses.LIMITS.MAX_LINES),
+    spoken: clean,
+    holdMs: 8000,
+  });
+}
 
 // ---------------------------------------------------------------- home screen
 // Companion first, then one section per family (usable modes only), then the
@@ -184,6 +261,7 @@ async function openMode(entry) {
   try {
     const mod = (await entry.load()).default;
     active = { mod, entry };
+    lastPolledGlance = ""; // new mode: let its first card through the poll dedupe
     await mod.init({ root: modeRoot, services });
     await mod.start();
     if (location.hash.includes("debug")) window.__mode = mod; // verification hook
@@ -199,6 +277,7 @@ function closeMode() {
     try { active.mod.stop(); } catch (e) { console.error(e); }
     try { active.mod.teardown(); } catch (e) { console.error(e); }
     active = null;
+    lastPolledGlance = "";
   }
   stopSpeaking();
   stopDictation(true);
@@ -901,7 +980,8 @@ async function askCompanion() {
       if (isAsync) renderTranscript(true);
       try {
         const text = String((await handled) || "Done.");
-        handleAssistantReply(question, { ok: true, text, stats: null });
+        handleAssistantReply(question, { ok: true, text, stats: null }, { fromMode: true });
+        pullActiveGlance(); // a mode command may have changed its glance state
       } catch (err) {
         console.error("mode command failed:", err);
         renderTranscript(false);
@@ -1021,7 +1101,7 @@ function formatRemindersReadback() {
 }
 
 // Success path for every model reply (real asks and test injections alike).
-function handleAssistantReply(question, res) {
+function handleAssistantReply(question, res, opts) {
   const parsed = extractAction(res.text);
   let assistantText = parsed.text || res.text;
   if (parsed.action) {
@@ -1045,6 +1125,10 @@ function handleAssistantReply(question, res) {
   if (parsed.action && parsed.action.action !== "list_notes" && parsed.action.action !== "list_reminders") {
     requestActionConfirm(parsed.action);
   }
+  // Glasses: the companion answer, condensed. Skipped for mode-command results
+  // (the mode emits its own richer card via pullActiveGlance) and for pending
+  // actions (the confirm handler emits the save card).
+  if (!parsed.action && !(opts && opts.fromMode)) glanceFromAnswer(assistantText, "ask");
   const willSpeak = speakReply(assistantText, () => {
     setStatus("idle");
     maybeRelisten(); // hands-free loop: answer finished SPEAKING → listen
@@ -1105,6 +1189,8 @@ document.getElementById("ccConfirmYes").addEventListener("click", async () => {
   }
   transcriptNote(line);
   renderNotesSheet();
+  // Glasses: a short save/confirmation card (the ✓ line without the quotes noise).
+  if (a) glasses.send({ title: "Saved ✓", lines: [line.replace(/^✓\s*/, "").replace(/[""]/g, "").slice(0, 90)], spoken: line, holdMs: 5000 });
   const willSpeak = speakReply(line, () => { setStatus("idle"); maybeRelisten(); });
   if (willSpeak) setStatus("speaking");
 });
@@ -1118,6 +1204,9 @@ function checkReminders() {
   for (const r of localActions.dueReminders()) {
     localActions.markFired(r.id);
     const line = `⏰ Reminder: ${r.text}`;
+    // Glasses: a due reminder is the canonical ALERT card — it preempts the
+    // rate cap / min-hold so it can't be starved by chatty normal cards.
+    glasses.send({ title: "⏰ Reminder", lines: [r.text], spoken: line, priority: "alert", holdMs: 10000 });
     showToast(line);
     if (cardState !== "closed") transcriptNote(line);
     if (cardState === "collapsed") { unreadReply = true; refreshFabStatus(); }
@@ -1244,6 +1333,7 @@ async function visionAsk(imageBase64, question) {
       if (convo.length > HISTORY_KEPT) convo = convo.slice(-HISTORY_KEPT);
       renderTranscript(false);
       if (cardState === "collapsed") unreadReply = true;
+      glanceFromAnswer(res.text, "look");   // glasses: the vision answer, condensed
       const willSpeak = speakReply(res.text, () => {
         setStatus("idle");
         maybeRelisten(); // vision answers join the hands-free loop too

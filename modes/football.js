@@ -126,6 +126,23 @@ export default {
   // football question are primed — without touching the shared prompt.
   getSystemContext() { return buildSystemContext(); },
 
+  // Glasses hook (additive): the instant read as one short card. The adapter
+  // clamps everything, so we just hand it the natural pieces. null before a
+  // read exists so the glasses show nothing rather than a blank.
+  getGlanceCard() {
+    if (!lastInstant || !lastInstant.line) return null;
+    const call = (lastInstant.line.match(/^Call:\s*([^—.]+)/i) || [])[1];
+    // Lens-native lines: strip the "(lg NN%)" league parenthetical the phone
+    // card carries, so each fits the 24-char HUD width without being truncated.
+    const lines = (lastInstant.numbers || []).map((n) => n.replace(/\s*\(lg [^)]*\)/i, "")).slice(0, 4);
+    return {
+      title: call ? call.trim() : "Football",
+      lines,
+      spoken: lastInstant.line,
+      holdMs: 7000,
+    };
+  },
+
   // Quick commands (intercepted before the model). Return a string / Promise<string>
   // to handle locally; return null to fall through to the football-primed answer.
   handleCommand(text) {

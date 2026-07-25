@@ -41,8 +41,60 @@ export default {
                                   // model answers WHILE THIS MODE IS ACTIVE are primed
                                   // (e.g. an analyst persona). Additive; modes without
                                   // it are unaffected.
+
+  // ---- OPTIONAL: a glanceable card for a heads-up display ----
+  getGlanceCard() {},             // return a GlanceCard (below) representing the mode's
+                                  // current state, or null. The shell pulls this while the
+                                  // Glasses preview is open. Additive; modes without it are
+                                  // simply skipped. Do NOT change any other mode behaviour.
 };
 ```
+
+## GlanceCards & the glasses adapter
+
+The Halo-class HUD is a small **circular additive display** (~256×256, safe
+radius ~112) on a low-bandwidth BLE link: a short **text card** is effectively
+free, there is **no live video**, and a camera snapshot is a deliberate
+one-per-look event. So a mode cannot ship its phone screen to the glasses — it
+emits one short **GlanceCard** (plain data) plus an optional spoken line.
+
+```js
+{
+  title:    string,           // headline, clamped to <= 20 chars
+  lines:    string[],         // body, <= 4 lines, each <= 24 chars
+  spoken?:  string,           // sentence to say aloud (may differ from the text)
+  holdMs?:  number,           // min visible time; clamped to [500, 30000]
+  priority?:'normal'|'alert'  // 'alert' preempts the rate cap / min-hold
+}
+```
+
+**The card is data, never anything executable.** Every limit is enforced by the
+adapter ([`services/glasses.js`](services/glasses.js)) — `glasses.send(card)`
+clamps title/line length, drops lines beyond four, **refuses non-string lines**
+(no objects/functions/numbers coerced), enforces a minimum hold and a rate cap
+so cards can't flash, marks every card dismissible, and **logs** what it clamped
+rather than crashing. A mode therefore cannot misbehave on the glasses even if it
+emits a malformed card.
+
+`glasses.wrap(text, width, maxLines)` is provided for callers that have a
+sentence to show rather than pre-shaped short lines (the companion answer and a
+Guide step use it), so long text word-wraps across the lens instead of being
+truncated to one line. The full text should still go in `spoken`.
+
+**Transport seam:** `send()` renders to the Glasses preview today. When the Halo
+is in hand we implement our own Web Bluetooth client behind `setTransport(fn)` —
+`fn` receives each already-clamped card and does the BLE write. Budget discipline
+is documented at that seam: cards are tiny/free, snapshots are on-demand only
+(the `/vision` "look" flow), and live video / continuous raw audio are never
+attempted over BLE.
+
+**Glasses preview:** the 🕶️ toggle in the companion strip renders the live card
+in a 256×256 circular safe area exactly as the Halo would — our develop-before-
+hardware harness. It is labelled a simulation. Implemented today for the companion
+(ask + look), actions (save confirmation + due-reminder `alert`), Guide (current
+step), and Football + Baseball (instant read). Visual modes (Astronomy returns
+null; Pendulum/Projectile return a simple numeric summary) — their 3D/camera views
+are never shrunk.
 
 ## The `ctx` object
 

@@ -145,6 +145,16 @@ export default {
     return s;
   },
 
+  // Glasses hook: this is a VISUAL/sensor mode, so we don't shrink its graph —
+  // just a simple numeric summary card, or null when there's nothing measured.
+  getGlanceCard() {
+    if (!enabled || !state.swinging || !state.T) return null;
+    const lines = [`T ≈ ${state.T.toFixed(2)} s`];
+    if (state.g) lines.push(`g ≈ ${state.g.toFixed(2)} m/s²`);
+    lines.push(state.locked ? "locked" : "settling…");
+    return { title: "Pendulum", lines, holdMs: 6000 };
+  },
+
   _state: () => ({ ...state, samples: samples.length }), // verification hook
 };
 

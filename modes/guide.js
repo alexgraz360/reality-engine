@@ -79,6 +79,26 @@ export default {
     return /[.!?]$/.test(out) ? out : out + ".";
   },
 
+  // Glasses hook (additive): the current step is already the right shape for a
+  // HUD — one instruction, a cue, a timer. null while picking/finished.
+  getGlanceCard() {
+    if (phase !== "steps" || !recipe) return null;
+    const s = recipe.steps[idx];
+    const left = timerLeftMs();
+    // A running timer is the single most glanceable thing, so it takes line 1;
+    // the step text wraps across the remaining lines rather than being truncated
+    // to one. The full step is always in `spoken`.
+    const lines = [];
+    if (left !== null) lines.push(`⏱ ${fmtLeft(left)} left`);
+    for (const w of wrapText(s.text, 24, 4 - lines.length)) lines.push(w);
+    return {
+      title: `Step ${idx + 1}/${recipe.steps.length}`,
+      lines,
+      spoken: s.donenessCue ? `${s.text} Cue: ${s.donenessCue}.` : s.text,
+      holdMs: 9000,
+    };
+  },
+
   // Voice/typed commands from the shell's companion input. Return a string (or
   // a Promise of one) to handle locally — spoken via the normal speak path —
   // or null to let the question fall through to the model (with getContext).
@@ -290,6 +310,31 @@ function fmtLeft(ms) {
   return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0");
 }
 function stopTimerDisplay() { timerRec = null; }
+
+// Greedy word-wrap into at most `maxLines` lines of `width` chars, for the
+// glasses HUD. The last line is ellipsised if the text doesn't fit — but the
+// full step is always spoken, so nothing is actually lost.
+function wrapText(text, width, maxLines) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    const next = cur ? cur + " " + w : w;
+    if (next.length <= width) { cur = next; continue; }
+    if (cur) lines.push(cur);
+    cur = w.length <= width ? w : w.slice(0, width - 1) + "…";
+    if (lines.length >= maxLines) break;
+  }
+  if (cur && lines.length < maxLines) lines.push(cur);
+  if (lines.length > maxLines) lines.length = maxLines;
+  // If we ran out of room mid-text, mark the final line as truncated.
+  const consumed = lines.join(" ").replace(/…$/, "").split(/\s+/).filter(Boolean).length;
+  if (consumed < words.length && lines.length) {
+    const last = lines[lines.length - 1];
+    if (!last.endsWith("…")) lines[lines.length - 1] = (last.length >= width ? last.slice(0, width - 1) : last) + "…";
+  }
+  return lines;
+}
 
 function uiTick() {
   if (!els.timerLine || phase !== "steps") return;

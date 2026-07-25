@@ -206,6 +206,18 @@ export default {
     return "In the projectile experiment, calibrated and waiting for a throw to track.";
   },
 
+  // Glasses hook: VISUAL mode — don't shrink the camera view, just a simple
+  // summary of the last measured throw, or null when nothing's been tracked.
+  getGlanceCard() {
+    if (!lastThrow) return null;
+    const t = lastThrow;
+    return {
+      title: "Last throw",
+      lines: [`Speed ≈ ${t.v0.toFixed(1)} m/s`, `Angle ≈ ${Math.round(t.angleDeg)}°`, `Range ≈ ${t.range.toFixed(1)} m`],
+      holdMs: 6000,
+    };
+  },
+
   // ---------------- verification hooks (synthetic driving — no camera needed) ----------------
   _state: () => ({
     modelState, running, ppm: calib.ppm, throwState,
