@@ -370,6 +370,7 @@
         <div class="sub">One open engine, many modes — see, measure, and understand the world.</div>
       </div>
       <button class="iconBtn" id="notesBtn" title="Notes &amp; Reminders" aria-label="Notes and Reminders">🗒</button>
+      <button class="iconBtn" id="memoriesBtn" title="Memories" aria-label="Memories">🧠</button>
       <button class="iconBtn" id="settingsBtn" title="Settings" aria-label="Settings">⚙︎</button>
       <button class="iconBtn" id="aboutBtn" title="About" aria-label="About">ⓘ</button>
     </header>
@@ -479,6 +480,24 @@
     </div>
   </div>
 
+  <!-- Memories: the user's OWN saved memories only (scope:'personal'), never the
+       seeded reference packs. Review, edit and delete — the safety valve. -->
+  <div class="sheetWrap" id="memoriesSheet">
+    <div class="sheet">
+      <h2>🧠 Memories</h2>
+      <div class="sub">Things you asked the companion to remember. Stored on <strong>your own bridge</strong>
+        (your machine) — never sent to anyone else. Unlike notes, these don't live only on this phone,
+        because that's where they're embedded for recall.</div>
+      <section>
+        <p class="mono" style="margin-bottom:8px;">Only what you saved — this isn't a record of your day.
+          Nothing is ever captured in the background, and no face recognition is used anywhere: a person
+          memory is only a name you said.</p>
+        <div id="memoriesList"></div>
+      </section>
+      <button class="ghostBtn sheetClose" data-close="memoriesSheet">Close</button>
+    </div>
+  </div>
+
   <div class="sheetWrap" id="aboutSheet">
     <div class="sheet">
       <h2>About Reality Engine</h2>
@@ -533,12 +552,18 @@
       <button class="ghostBtn accent" id="companionAskBtn">Ask</button>
     </div>
     <input type="file" id="companionLookInput" accept="image/*" capture="environment" style="display:none;">
+    <input type="file" id="companionRememberInput" accept="image/*" capture="environment" style="display:none;">
     <div class="voiceNote" id="companionVoiceNote"></div>
     <div id="ccToggles">
       <label class="ccTog" title="Read answers aloud"><input type="checkbox" id="companionSpeakToggle"><span>🔊 Speak</span></label>
       <label class="ccTog" title="Start listening when opened"><input type="checkbox" id="companionAutoListen"><span>🎤 Open=listen</span></label>
       <label class="ccTog" title="Hands-free back-and-forth"><input type="checkbox" id="companionConvoToggle"><span>🔁 Convo</span></label>
       <label class="ccTog" title="Simulate the Halo glasses screen"><input type="checkbox" id="glassesPreviewToggle"><span>🕶️ Glasses</span></label>
+    </div>
+    <div id="ccMemRow" style="display:flex; gap:8px; margin-top:8px;">
+      <button class="ghostBtn" id="lookRememberBtn" style="flex:1;"
+        title="Take one snapshot and save what it shows as a memory (you confirm first)">👁 Look &amp; remember</button>
+      <button class="ghostBtn" id="openMemoriesBtn" style="flex:1;" title="See and delete what you've saved">🧠 Memories</button>
     </div>
     <div id="ccVoiceRow">
       <select id="companionVoiceSel" title="Voice"><option value="system">System voice</option></select>

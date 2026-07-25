@@ -36,10 +36,16 @@ const SYSTEM_PROMPT =
   "{\"action\":\"add_reminder\",\"text\":\"...\",\"when\":\"YYYY-MM-DDTHH:MM\"} (local time; " +
   "resolve relative times like 'in 10 minutes' or 'at 6pm' using the current date/time " +
   "provided) · {\"action\":\"list_reminders\"} · {\"action\":\"delete_reminder\",\"match\":\"...\"} · " +
-  "{\"action\":\"remember\",\"text\":\"the fact to keep\",\"topic\":\"short label\"} when the user tells " +
-  "you to remember a lasting fact or preference (\"remember that my oven runs hot\") — that goes into " +
-  "their knowledge library and comes back to you in future answers, unlike a note, which is just a " +
-  "list item they read themselves. " +
+  "{\"action\":\"remember\",\"text\":\"the fact to keep\",\"topic\":\"short label\",\"kind\":\"thing|person|fact|place\"," +
+  "\"subject\":\"what it is about\"} when the user tells " +
+  "you to remember a lasting fact, a personal detail, where something is, or who someone is " +
+  "(\"remember that my oven runs hot\", \"remember I put my passport in the desk drawer\", " +
+  "\"this is Maya, she works with Sam\") — that goes into their knowledge library and comes back to " +
+  "you in future answers, unlike a note, which is just a list item they read themselves. " +
+  "Use kind 'thing' for where an object is, 'person' for who someone is, 'place' for a location " +
+  "detail, otherwise 'fact'; subject is the short thing it is about (e.g. \"passport\", \"Maya\"). " +
+  "{\"action\":\"forget\",\"match\":\"...\"} when the user asks you to forget or delete something " +
+  "they told you to remember. " +
   "The app shows the user a confirmation before anything is saved or deleted, so never claim " +
   "an action is already done — say what you're proposing. Never emit an action block the user " +
   "didn't clearly ask for; for everything else reply normally with no JSON and no code blocks. " +
@@ -282,7 +288,13 @@ export const companion = {
         "may be more current or specific than your training. Use them when they answer " +
         "the question, and mention which note it came from (e.g. \"per your cooking " +
         "reference\"). If they don't cover it, answer normally from your own knowledge " +
-        "and don't pretend they did.\n\n" + knowledge.format(found),
+        "and don't pretend they did.\n\n" +
+        "Any note marked YOUR OWN MEMORY is something this user personally asked you to " +
+        "remember. Answer from it verbatim, and SAY WHEN they saved it (the note tells " +
+        "you) — recency is why they asked. NEVER invent a memory: if no YOUR OWN MEMORY " +
+        "note below answers a question about their own things, people or past statements, " +
+        "say plainly that you don't have it stored and offer to remember it now.\n\n" +
+        knowledge.format(found),
     }] : [];
 
     const systemExtra = opts && typeof opts.systemExtra === "string" && opts.systemExtra.trim()
@@ -337,6 +349,13 @@ export const companion = {
       return {
         ok: true, source: "local", text: data.text.trim(), stats: data.stats || null,
         sources: found.map((f) => ({ pack: f.packLabel || f.pack, title: f.title, score: f.score })),
+        // Memory honesty: a personal question with NO personal memory retrieved
+        // must never be answered from the model's imagination. The caller
+        // enforces this — a prompt instruction alone can be hallucinated past.
+        askedPersonal: knowledge.isPersonalQuestion(prompt),
+        personalFound: found.filter((f) => f.meta && f.meta.scope === "personal")
+          .map((f) => ({ subject: (f.meta.subject || f.title), ts: f.meta.ts, placeTag: f.meta.placeTag || null,
+                         savedVia: f.meta.source || "said", text: f.text })),
       };
     } catch (err) {
       const timedOut = err && err.name === "AbortError";
