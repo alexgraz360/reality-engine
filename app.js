@@ -51,6 +51,12 @@ const REGISTRY = [
     load: () => import("./modes/translate.js"),
   },
   {
+    id: "repair", title: "Guide · fix & assemble", family: "Build", icon: "🔧",
+    permissions: ["camera", "mic"],
+    blurb: "Unclog a sink, fix a dripping tap, mend a puncture, build the flat-pack — hands-free, safety prep first, and it ends by proving the fix actually worked. Gas and mains wiring are refused, not attempted.",
+    load: () => import("./modes/repair.js"),
+  },
+  {
     id: "transcribe", title: "Transcribe · record & recall", family: "Live", icon: "🎙",
     permissions: ["mic"],
     blurb: "Record a meeting or class, get a transcript and summary on your own bridge, then ask about it later — it lands in your memories. Never ambient; you tap to start.",

@@ -1,0 +1,182 @@
+{
+  "_note": "Repair/assembly packs for the Guide engine. Deliberately limited to genuinely DIY-safe jobs: no gas, no mains wiring, no structural or roof/ladder work, no chemical drain cleaners. Every pack ends with a verify step that proves it worked.",
+  "packs": [
+    {
+      "id": "unclog-sink",
+      "title": "Unclog a slow sink",
+      "domain": "repair",
+      "difficulty": "easy",
+      "timeEstimate": "20–40 min",
+      "tools": ["Cup plunger", "Bucket", "Old towels", "Rubber gloves", "Adjustable pliers or wrench", "Torch/phone light"],
+      "parts": ["Replacement trap washers (only if the trap is disturbed)"],
+      "safety": [
+        "Do NOT use chemical drain cleaner — if it doesn't clear the blockage you're left with caustic water you then have to work in. This guide never uses it.",
+        "If you have already poured any chemical cleaner down this drain, stop here and call a plumber instead.",
+        "Put a bucket and towels under the trap before you open anything — there will be standing water.",
+        "Wear gloves. Drain water isn't clean.",
+        "Stop if you find a cracked pipe, water coming through a ceiling or wall, or several drains backing up at once — that's beyond a sink clog."
+      ],
+      "steps": [
+        { "text": "Clear everything out from under the sink and put your bucket and towels underneath the U-shaped trap.", "tip": "Photograph the pipework now — it's a genuinely useful reference when you put it back." },
+        { "text": "Bail or scoop out standing water from the basin until only an inch or so is left.", "tip": "A plunger needs some water to work, but a full basin just sloshes over you." },
+        { "text": "If the sink has an overflow hole near the rim, block it firmly with a wet cloth.", "tip": "Skipping this is the usual reason plunging does nothing — the air escapes out the overflow instead of pushing the clog.", "checkCue": "the overflow hole packed with a damp cloth" },
+        { "text": "Seat the plunger flat over the drain and pump firmly straight up and down about ten times, keeping the seal.", "tip": "It's the pull that shifts a clog as much as the push.", "timerSeconds": 30 },
+        { "text": "Lift the plunger away and watch. If the water drains, run the tap for thirty seconds and see if it keeps up.", "checkCue": "water swirling away steadily instead of pooling" },
+        { "text": "Still blocked? Place the bucket under the trap and loosen the two slip nuts by hand, or with pliers if they're tight.", "tip": "Turn slowly — you want them loose, not rounded off." },
+        { "text": "Pull the trap free, tip it into the bucket, and clear the gunk out of it. Rinse it in another sink if you can.", "checkCue": "an empty, open U-bend you can see daylight through" },
+        { "text": "Shine a light into the pipe going into the wall. If you can see a blockage close by, hook it out with a straightened coat hanger or a hand snake.", "tip": "Never force a snake hard — if it stops dead and won't turn, that's your cue to stop rather than push harder." },
+        { "text": "Refit the trap, hand-tighten both slip nuts, then give them a small nudge with pliers. Don't crank them — over-tightening cracks plastic.", "tip": "If the washers look flattened or split, replace them; they're pennies." }
+      ],
+      "verify": {
+        "text": "Run the tap hard for a full minute, then look and feel all round the trap and both nuts for drips while the water is still running.",
+        "tip": "Dry the joints with kitchen paper first — that way any new water is obvious.",
+        "checkCue": "completely dry joints while water is running at full flow"
+      }
+    },
+    {
+      "id": "faucet-cartridge",
+      "title": "Fix a dripping tap (washer or cartridge)",
+      "domain": "repair",
+      "difficulty": "medium",
+      "timeEstimate": "30–60 min",
+      "tools": ["Adjustable wrench", "Screwdrivers (flat + cross)", "Allen keys", "Old towel", "Torch/phone light"],
+      "parts": ["Replacement washer or cartridge to match your tap", "Plumber's grease (optional)"],
+      "safety": [
+        "Turn the water off at the isolation valves under the basin — or at the main stopcock if there aren't any — BEFORE you touch the tap.",
+        "Open the tap afterwards to release the pressure and let the line drain. It should run dry.",
+        "Plug or cover the plughole with a towel so small screws can't disappear down it.",
+        "Take the old washer or cartridge with you to buy the replacement — 'looks about right' rarely is.",
+        "Stop if the valve won't shut the water off, if the pipework is corroded or weeping, or if the tap body itself is cracked."
+      ],
+      "steps": [
+        { "text": "Close the isolation valves under the basin (turn until they stop), then open the tap fully to drain the line.", "checkCue": "the tap running dry with nothing but a few drips" },
+        { "text": "Lay a towel in the basin and over the plughole.", "tip": "One dropped grub screw down an open waste can cost you the whole afternoon." },
+        { "text": "Prise off the little hot/cold cap on the handle to reveal the screw underneath.", "tip": "A fingernail or a small flat screwdriver wrapped in tape avoids scratching the finish." },
+        { "text": "Undo the handle screw and lift the handle straight off.", "checkCue": "the exposed valve body with the handle removed" },
+        { "text": "Unscrew the retaining nut or bonnet with your wrench and lift out the cartridge or valve.", "tip": "Note which way round it sits — many cartridges only fit one way and will drip forever if reversed." },
+        { "text": "Compare it against the new part. If it's a rubber washer at the base, replace just that; if it's a cartridge, replace the whole unit.", "checkCue": "old and new parts side by side, same shape and size" },
+        { "text": "Wipe the seat inside the tap body clean with a cloth and check it isn't scored or pitted.", "tip": "A badly scored seat is why a new washer still drips — that's a tap replacement, not a washer job." },
+        { "text": "Fit the new part the same way round as the old one, and refit the retaining nut finger-tight then gently snug with the wrench.", "tip": "Snug, not brutal. You're compressing a seal, not fighting it." },
+        { "text": "Refit the handle, its screw, and the cap.", "checkCue": "the handle turning smoothly through its full range" },
+        { "text": "Open the isolation valves slowly, about a quarter turn at a time, and watch the joints as pressure returns." }
+      ],
+      "verify": {
+        "text": "Run the tap hot and cold, then close it and dry the spout completely. Watch it for two full minutes — there should be no drip forming at all.",
+        "tip": "Also feel underneath the basin around the tap tails while the water is on.",
+        "checkCue": "a bone-dry spout two minutes after closing the tap",
+        "timerSeconds": 120
+      }
+    },
+    {
+      "id": "bike-flat",
+      "title": "Fix a flat bike tyre",
+      "domain": "repair",
+      "difficulty": "easy",
+      "timeEstimate": "20–30 min",
+      "tools": ["Tyre levers (2–3)", "Pump with a gauge", "Spanner or quick-release for the wheel"],
+      "parts": ["New inner tube (right size) or a patch kit", "Rim tape (only if the old one is damaged)"],
+      "safety": [
+        "Work with the bike stable — upside down on its saddle and bars, or in a stand. A bike that topples mid-job takes fingers with it.",
+        "If it's a rear wheel with gears, shift to the smallest sprocket first; it makes the wheel come out and go back far more easily.",
+        "Watch for the thing that caused the puncture — glass or a thorn still in the tyre will flat your new tube in minutes.",
+        "Stop if the rim is cracked, badly buckled, or the braking surface is worn through — that's a wheel replacement, not a tube swap."
+      ],
+      "steps": [
+        { "text": "Turn the bike over or put it in a stand, then release the brake if it's a rim brake so the tyre can pass through.", "tip": "Rim brakes usually have a small quick-release lever on the caliper." },
+        { "text": "Undo the quick-release or axle nuts and take the wheel off.", "checkCue": "the wheel free of the frame with the axle clear" },
+        { "text": "Let out any remaining air, then push the tyre bead inwards all the way round to unseat it.", "tip": "This one habit makes the levers ten times easier — most people skip it and fight the tyre." },
+        { "text": "Hook one lever under the bead and clip it to a spoke, then work a second lever round to free one side of the tyre.", "checkCue": "one side of the tyre sitting outside the rim all the way round" },
+        { "text": "Pull the old tube out, leaving the valve for last.", "tip": "Keep track of how the tube sat — it helps you find the matching spot in the tyre." },
+        { "text": "Inflate the old tube a little and listen or feel for the leak, then match that point to the same position on the tyre.", "checkCue": "the hole located on the tube" },
+        { "text": "Run your fingers carefully round the INSIDE of the tyre to find the culprit and pull it out.", "tip": "Go slowly — a shard of glass will cut you if you sweep round quickly. Use a rag if you'd rather.", "checkCue": "the thorn, glass or wire removed from the casing" },
+        { "text": "Put just enough air in the new tube to give it shape, then feed the valve through the rim hole and tuck the tube inside the tyre all the way round.", "tip": "A tube with a little shape in it won't get pinched under the bead — pinch flats are the classic repeat puncture." },
+        { "text": "Work the tyre bead back over the rim with your thumbs, finishing at the valve.", "tip": "Try hard to finish by hand. Levers at this stage are how people pinch the new tube." },
+        { "text": "Push the valve up into the tyre and back down, then check all round both sides that no tube is peeping out under the bead.", "checkCue": "an even bead line with no tube visible anywhere" },
+        { "text": "Inflate to the pressure printed on the tyre sidewall, then refit the wheel and do the brake back up." }
+      ],
+      "verify": {
+        "text": "Spin the wheel and watch the tyre run true, squeeze it to confirm it's firm, then leave it five minutes and check the pressure again — it should not have dropped.",
+        "tip": "Give the brakes a squeeze before you ride off, especially if you released them at the start.",
+        "checkCue": "a tyre still firm five minutes later and running true",
+        "timerSeconds": 300
+      }
+    },
+    {
+      "id": "flatpack",
+      "title": "Assemble flat-pack furniture",
+      "domain": "repair",
+      "difficulty": "easy",
+      "timeEstimate": "45–90 min",
+      "tools": ["The supplied Allen key (a screwdriver-handled one is far kinder on your hands)", "Cross-head screwdriver", "Rubber mallet or a hammer with a cloth"],
+      "parts": ["Everything in the fittings bag — count it before you start"],
+      "safety": [
+        "Clear a space bigger than the finished item and work on carpet or flattened cardboard so you don't scratch the panels or the floor.",
+        "Tall units — wardrobes, bookcases, chests of drawers — must be anchored to the wall with the supplied bracket. This is the step people skip and it's the one that hurts a child.",
+        "Get a second pair of hands for anything tall or heavy before you stand it up, not halfway through.",
+        "Stop before drilling into a wall if you can't confirm what's behind it — pipes and cables live in walls."
+      ],
+      "steps": [
+        { "text": "Open the fittings bag and count everything against the parts list on page one. Sort it into piles by type.", "tip": "Five minutes here saves the special misery of finding you're one cam lock short with the carcass half built.", "checkCue": "sorted piles matching the parts list" },
+        { "text": "Lay the panels out and identify them by their letter or number. Work out which face is the visible one.", "tip": "The unfinished-looking face is usually the back or underside. Getting a side panel inside-out is the most common flat-pack mistake." },
+        { "text": "Push the cam bolts into their pre-drilled holes and hand-tighten them upright.", "checkCue": "cam bolts standing straight, not leaning" },
+        { "text": "Drop the cam locks into their round housings with the arrow or slot facing the edge the bolt comes in from.", "tip": "If the arrow points the wrong way the panels simply won't pull together." },
+        { "text": "Bring the panels together, seat the cam bolts into the locks, and turn each lock about half a turn clockwise until it grips.", "checkCue": "a tight joint with no gap at the seam" },
+        { "text": "Work round the carcass following the sequence in the instructions rather than doing all of one type at once.", "tip": "The printed order usually exists so the thing stays square." },
+        { "text": "Before the back panel goes on, check the carcass is square: measure both diagonals and nudge until they match.", "tip": "A cabinet that isn't square is why drawers rub and doors sit crooked.", "checkCue": "two diagonal measurements that are equal" },
+        { "text": "Nail or screw the back panel on, working round evenly.", "tip": "The back panel is what holds it square — don't leave it off 'for now'." },
+        { "text": "Fit drawers, doors, handles and shelves last, adjusting the hinges until the gaps look even." },
+        { "text": "If this is a tall unit, fit the anti-tip bracket to the furniture and to the wall now, before you load anything into it.", "tip": "Into a stud or a proper wall plug — not just plasterboard." }
+      ],
+      "verify": {
+        "text": "Open and close every door and drawer twice, press down on the top, and give the unit a gentle push at the top to confirm the anti-tip bracket is holding.",
+        "tip": "Any rocking, rubbing or gaping seam means a joint needs another half turn — better now than in six months.",
+        "checkCue": "doors and drawers moving freely with even gaps and no rocking"
+      }
+    }
+  ],
+  "triage": [
+    {
+      "id": "root",
+      "q": "What's the trouble?",
+      "options": [
+        { "label": "Water won't drain away", "next": "drain" },
+        { "label": "Something's dripping or leaking", "next": "leak" },
+        { "label": "Flat bike tyre", "pack": "bike-flat" },
+        { "label": "Furniture to put together", "pack": "flatpack" },
+        { "label": "Something else", "stop": "unclear" }
+      ]
+    },
+    {
+      "id": "drain",
+      "q": "Is it just one sink, or several drains at once?",
+      "options": [
+        { "label": "Just this one sink", "next": "drain-speed" },
+        { "label": "Several drains, or a toilet too", "stop": "multi-drain" }
+      ]
+    },
+    {
+      "id": "drain-speed",
+      "q": "Does it drain slowly, or not at all?",
+      "options": [
+        { "label": "Slowly", "pack": "unclog-sink" },
+        { "label": "Completely blocked", "pack": "unclog-sink" },
+        { "label": "It's backing up out of the plughole", "stop": "multi-drain" }
+      ]
+    },
+    {
+      "id": "leak",
+      "q": "Where's the water coming from?",
+      "options": [
+        { "label": "The tap drips when it's off", "pack": "faucet-cartridge" },
+        { "label": "Under the sink, around the pipes", "pack": "unclog-sink" },
+        { "label": "A ceiling, wall or floor", "stop": "hidden-leak" },
+        { "label": "I can't tell", "stop": "unclear" }
+      ]
+    }
+  ],
+  "triageStops": {
+    "multi-drain": "Several drains backing up at once usually means the problem is further down the shared waste pipe, not in this sink. That's a job for a plumber with a drain camera — clearing it from here rarely works and can make a mess of your floor.",
+    "hidden-leak": "Water showing up in a ceiling, wall or floor means it's travelling from somewhere you can't see, and it may have been doing it for a while. Turn the water off if you can and get a plumber to trace it properly.",
+    "unclear": "I can't narrow this down confidently from what you've told me, and I'd rather say so than talk you into the wrong repair."
+  }
+}
