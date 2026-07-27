@@ -120,6 +120,11 @@ export const knowledge = {
       || /\bwhere('?s| is| are) (my|our|the)\b/.test(t)
       || /\bwho (is|was|are)\b/.test(t)
       || /\bwhat did i (say|tell|mention)\b/.test(t)
+      // Meeting/session recall — "what did we decide about the budget?"
+      || /\bwhat (did|was) (we|it|they) ?(decide|agree|discuss|say|conclude)/.test(t)
+      || /\bwhat (was|were) (decided|agreed|discussed)\b/.test(t)
+      || /\b(in|from|at) (the|that|our|my) (meeting|call|session|standup|review)\b/.test(t)
+      || /\baction items?\b/.test(t)
       || /\b(did i|have i) (say|said|tell|told|store|save|remember)\b/.test(t)
       || /\bmy\b/.test(t);
   },

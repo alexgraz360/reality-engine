@@ -169,6 +169,52 @@ export const companion = {
   // ONE downscaled frame of a TV score bug → { parsed fields, rawText }. Fields
   // the bridge could not read clearly come back null and stay manual — it never
   // fabricates. Image goes only to the user's own bridge, same as vision.
+  // ---- transcription (bridge /transcribe) — ASYNC JOBS ----
+  // Submitting returns a job id immediately; the caller polls. A long recording
+  // takes minutes of CPU, so this must never be a blocking request.
+  async transcribeStart(audioBase64, { format = "m4a", keepAudio = false } = {}) {
+    if (!this.isConfigured()) {
+      return { ok: false, reason: "unconfigured", text: "The companion isn't configured yet — add your bridge in Settings first." };
+    }
+    const cfg = this.getConfig();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 180_000);   // the UPLOAD may be large
+    try {
+      const r = await fetch(scrubEndpoint(cfg.endpoint) + "/transcribe", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + scrub(cfg.token) },
+        body: JSON.stringify({ audioBase64, format, keepAudio }),
+        signal: ctrl.signal,
+      });
+      if (r.status === 401) return { ok: false, reason: "unauthorized", text: "The bridge rejected the token — re-check Settings → Companion." };
+      if (r.status === 429) return { ok: false, reason: "rate_limited", text: "The bridge is busy transcribing — try again shortly." };
+      if (r.status === 400) return { ok: false, reason: "bad_audio", text: "That recording was too large or unreadable." };
+      if (!r.ok) return { ok: false, reason: "unavailable", text: "Transcription isn't available on the bridge right now." };
+      const data = await r.json();
+      return data.jobId ? { ok: true, jobId: data.jobId } : { ok: false, reason: "unavailable", text: "The bridge didn't start the job." };
+    } catch (err) {
+      const timedOut = err && err.name === "AbortError";
+      return { ok: false, reason: timedOut ? "timeout" : "offline",
+        text: timedOut ? "Uploading took too long — try a shorter recording."
+                       : "Couldn't reach the bridge — is the host machine awake?" };
+    } finally { clearTimeout(timer); }
+  },
+
+  async transcribeStatus(jobId) {
+    if (!this.isConfigured()) return { ok: false, reason: "unconfigured" };
+    const cfg = this.getConfig();
+    try {
+      const r = await fetch(scrubEndpoint(cfg.endpoint) + "/transcribe/" + encodeURIComponent(jobId), {
+        headers: { authorization: "Bearer " + scrub(cfg.token) },
+      });
+      if (r.status === 404) return { ok: false, reason: "gone", text: "That job is no longer on the bridge." };
+      if (!r.ok) return { ok: false, reason: "unavailable" };
+      return { ok: true, ...(await r.json()) };
+    } catch (err) {
+      return { ok: false, reason: "offline" };
+    }
+  },
+
   // ---- raw OCR (bridge /ocr) ----
   // One downscaled frame → the recognized TEXT (for Translate's READ). Same
   // one-frame-to-your-own-bridge path as vision/scoreboard.
