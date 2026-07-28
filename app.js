@@ -57,6 +57,12 @@ const REGISTRY = [
     load: () => import("./modes/repair.js"),
   },
   {
+    id: "formcoach", title: "Form Coach · one cue at a time", family: "Learn", icon: "🏀",
+    permissions: ["camera", "mic"],
+    blurb: "Prop the phone side-on and take some shots or squats. It picks the single biggest thing to fix, says it once, and stops mentioning it when you've got it. Not for pain or injury.",
+    load: () => import("./modes/formcoach.js"),
+  },
+  {
     id: "navigator", title: "Navigator · point me back", family: "Live", icon: "🧭",
     permissions: ["gps"],
     blurb: "Drop a pin at your car, your tent, the entrance — then get a direction and distance back to it. A pointer, not a map: no tiles, no routing, nothing leaves the phone.",

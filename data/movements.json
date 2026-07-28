@@ -1,0 +1,125 @@
+{
+  "_note": "Form Coach movement definitions. PURE DATA - adding a third movement means adding an entry here, not writing code. Each check names a measurement the engine already knows how to compute, a taught-fundamental target range, the cue spoken when it's out of range, and a priority (1 = fix first). Target ranges are widely-taught fundamentals, not personalised coaching; good form varies by body, sport and coach. IMPORTANT: every measurement here is chosen to be visible from a SIDE view with one camera. Lateral faults (true elbow flare out to the side, knees caving inward) are simply not observable side-on, so they are NOT measured here rather than being guessed at - they would need a front view.",
+  "_measurements": {
+    "elbowAngleAtSet": "shoulder-elbow-wrist angle at the lowest wrist point before release",
+    "releaseElbowAngle": "shoulder-elbow-wrist angle at the frame of peak wrist height",
+    "followThroughHold": "seconds the wrist stays above the shoulder after release",
+    "kneeAngleAtDepth": "hip-knee-ankle angle at the lowest hip point (smaller = deeper)",
+    "hipAngleAtDepth": "shoulder-hip-knee angle at the lowest hip point (smaller = more hinge)",
+    "torsoLeanAtDepth": "angle of the shoulder-hip line from vertical at the lowest hip point",
+    "kneeTravelAtDepth": "how far the knee sits forward of the ankle at depth, as a fraction of shin length; side-on this is forward travel, NOT lateral knee cave",
+    "releaseHeight": "wrist height above the shoulder at release, as a multiple of the shoulder-to-ear distance; side-on proxy for releasing high rather than pushing the ball from the chest"
+  },
+  "movements": [
+    {
+      "id": "basketball-shot",
+      "title": "Basketball shot",
+      "verb": "shot",
+      "icon": "🏀",
+      "setup": "Stand side-on to the phone, shooting arm nearest the camera, whole body in frame.",
+      "repDetect": {
+        "signal": "wristY",
+        "direction": "up",
+        "minTravel": 0.12
+      },
+      "checks": [
+        {
+          "id": "elbow-set-angle",
+          "priority": 1,
+          "measure": "elbowAngleAtSet",
+          "target": {
+            "min": 70,
+            "max": 100
+          },
+          "cueLow": "You're collapsing the elbow too far - set the ball with about a right angle at the elbow.",
+          "cueHigh": "Your set point's too open - bend the elbow closer to a right angle before you go up.",
+          "good": "Good set point on the elbow."
+        },
+        {
+          "id": "release-extension",
+          "priority": 2,
+          "measure": "releaseElbowAngle",
+          "target": {
+            "min": 150
+          },
+          "cue": "Finish the arm - extend all the way up through the release.",
+          "good": "You're extending fully through the release."
+        },
+        {
+          "id": "release-height",
+          "priority": 3,
+          "measure": "releaseHeight",
+          "target": {
+            "min": 1.0
+          },
+          "cue": "You're releasing from too low - get the ball up above your head before it leaves your hand.",
+          "good": "Release point is nice and high."
+        },
+        {
+          "id": "follow-through",
+          "priority": 4,
+          "measure": "followThroughHold",
+          "target": {
+            "min": 0.4
+          },
+          "cue": "Hold the follow-through - keep the hand up until the ball lands.",
+          "good": "Follow-through is holding well."
+        }
+      ]
+    },
+    {
+      "id": "bodyweight-squat",
+      "title": "Bodyweight squat",
+      "verb": "squat",
+      "icon": "🦵",
+      "setup": "Stand side-on to the phone, whole body from head to feet in frame.",
+      "repDetect": {
+        "signal": "hipY",
+        "direction": "down",
+        "minTravel": 0.1
+      },
+      "checks": [
+        {
+          "id": "torso-lean",
+          "priority": 1,
+          "measure": "torsoLeanAtDepth",
+          "target": {
+            "max": 45
+          },
+          "cue": "You're folding forward - lift your chest and sit back instead.",
+          "good": "Chest is staying up nicely."
+        },
+        {
+          "id": "depth",
+          "priority": 2,
+          "measure": "kneeAngleAtDepth",
+          "target": {
+            "max": 100
+          },
+          "cue": "Go a little deeper - aim for thighs about parallel to the floor.",
+          "good": "You're hitting good depth."
+        },
+        {
+          "id": "hip-hinge",
+          "priority": 3,
+          "measure": "hipAngleAtDepth",
+          "target": {
+            "min": 55
+          },
+          "cue": "Push your hips back as you go down rather than dropping straight through the knees.",
+          "good": "Nice hip hinge on the way down."
+        },
+        {
+          "id": "knee-travel",
+          "priority": 4,
+          "measure": "kneeTravelAtDepth",
+          "target": {
+            "max": 0.55
+          },
+          "cue": "Your knees are running a long way past your toes - sit back into your hips more.",
+          "good": "Knee travel looks controlled."
+        }
+      ]
+    }
+  ]
+}
