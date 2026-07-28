@@ -57,6 +57,12 @@ const REGISTRY = [
     load: () => import("./modes/repair.js"),
   },
   {
+    id: "navigator", title: "Navigator · point me back", family: "Live", icon: "🧭",
+    permissions: ["gps"],
+    blurb: "Drop a pin at your car, your tent, the entrance — then get a direction and distance back to it. A pointer, not a map: no tiles, no routing, nothing leaves the phone.",
+    load: () => import("./modes/navigator.js"),
+  },
+  {
     id: "transcribe", title: "Transcribe · record & recall", family: "Live", icon: "🎙",
     permissions: ["mic"],
     blurb: "Record a meeting or class, get a transcript and summary on your own bridge, then ask about it later — it lands in your memories. Never ambient; you tap to start.",

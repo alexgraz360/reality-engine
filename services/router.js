@@ -90,8 +90,15 @@ function contentWords(s) { return words(s).filter((w) => !STOP.has(w)); }
 //   ~0.5  strong keyword overlap with a declared example
 function scoreCapability(cap, text) {
   for (const p of cap.patterns) {
-    try { if (p.test(text)) return { score: 1, why: "pattern", pattern: String(p) }; }
-    catch (e) { /* a bad pattern must never break routing */ }
+    try {
+      const hit = text.match(p);
+      // `specificity` = how much of the utterance the pattern actually claimed.
+      // Two capabilities can legitimately both match ("where's my …" for memory
+      // recall vs "where's my car" for the navigator); the one that matched MORE
+      // of the sentence is the more specific claim and should win, rather than
+      // the result depending on registration order.
+      if (hit) return { score: 1, why: "pattern", specificity: hit[0].length, pattern: String(p) };
+    } catch (e) { /* a bad pattern must never break routing */ }
   }
   const tw = new Set(contentWords(text));
   if (!tw.size) return { score: 0, why: "empty" };
@@ -113,9 +120,9 @@ function scoreCapability(cap, text) {
 // Rank every capability. Pure, synchronous, no model, no network.
 export function rank(text) {
   return capabilities
-    .map((cap) => ({ cap, ...scoreCapability(cap, text) }))
+    .map((cap) => ({ cap, specificity: 0, ...scoreCapability(cap, text) }))
     .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => (b.score - a.score) || (b.specificity - a.specificity));
 }
 
 // ---------------------------------------------------------------- decision
@@ -127,7 +134,10 @@ export function decide(text) {
   const ranked = rank(text);
   if (!ranked.length) return { action: "none", ranked };
   const top = ranked[0], second = ranked[1];
-  const ambiguous = second && (top.score - second.score) < MARGIN;
+  // A clearly more specific pattern match settles it — that's a real signal,
+  // not a coin flip, so it isn't ambiguity.
+  const moreSpecific = second && top.specificity > second.specificity;
+  const ambiguous = second && (top.score - second.score) < MARGIN && !moreSpecific;
 
   if (top.score >= STRONG && !ambiguous) {
     return { action: "route", cap: top.cap, path: "deterministic", score: top.score, why: top.why };
