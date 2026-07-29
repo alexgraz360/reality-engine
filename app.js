@@ -63,6 +63,12 @@ const REGISTRY = [
     load: () => import("./modes/formcoach.js"),
   },
   {
+    id: "chemistry", title: "Chemistry · what's happening here", family: "Learn", icon: "🧪",
+    permissions: ["camera", "mic"],
+    blurb: "Point at rust, a rising loaf, a candle, melting ice — and hear what's actually going on underneath. Explains only: it gives no procedures for making anything, and household mixing questions are answered from a fixed safety table rather than by the AI.",
+    load: () => import("./modes/chemistry.js"),
+  },
+  {
     id: "navigator", title: "Navigator · point me back", family: "Live", icon: "🧭",
     permissions: ["gps"],
     blurb: "Drop a pin at your car, your tent, the entrance — then get a direction and distance back to it. A pointer, not a map: no tiles, no routing, nothing leaves the phone.",

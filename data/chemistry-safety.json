@@ -1,0 +1,129 @@
+{
+  "_note": "THE HOUSEHOLD INCOMPATIBILITY TABLE. This file, and only this file, answers 'can I mix X and Y'. The language model is NEVER asked, never consulted, and cannot alter a single word of the answer — a hallucinated 'that's fine' here could put someone in hospital, so data owns the call. Read modes/chemistry.js -> mixAnswer() to see the path: it is pure synchronous lookup with no network and no model.",
+  "_designNote": "EVERY entry is a reason NOT to mix. There is deliberately no 'safe' verdict anywhere in this table, because a wrong 'safe' is the only error here that hurts someone. A pair that is not listed returns 'not in my table, so don't mix it' — the mode never reasons its way to permission.",
+  "_sources": "Well-established household chemical hazards as published on consumer product labels and by public poison-control and workplace-safety guidance. Product labels and safety data sheets are always authoritative over this table.",
+
+  "substances": [
+    {
+      "id": "bleach",
+      "label": "bleach",
+      "match": ["bleach", "chlorine bleach", "thin bleach", "sodium hypochlorite", "hypochlorite", "clorox", "domestos", "mould spray", "mold spray", "mildew remover"]
+    },
+    {
+      "id": "ammonia",
+      "label": "ammonia",
+      "match": ["ammonia", "ammonium hydroxide", "glass cleaner", "window cleaner", "windex", "windolene", "ammonia based cleaner", "ammoniated"]
+    },
+    {
+      "id": "acid",
+      "label": "an acid (vinegar, lemon juice, descaler, toilet-bowl or limescale cleaner)",
+      "match": ["vinegar", "white vinegar", "acetic acid", "lemon juice", "citric acid", "descaler", "descaling", "limescale remover", "limescale cleaner", "toilet bowl cleaner", "toilet cleaner", "clr", "muriatic acid", "hydrochloric acid", "brick cleaner", "rust remover", "oxalic acid", "sulfuric acid", "sulphuric acid", "battery acid", "acid cleaner", "an acid", "acids"]
+    },
+    {
+      "id": "alcohol",
+      "label": "rubbing alcohol",
+      "match": ["rubbing alcohol", "isopropyl", "isopropanol", "surgical spirit", "surgical spirits", "methylated spirit", "methylated spirits", "hand sanitiser", "hand sanitizer", "denatured alcohol"]
+    },
+    {
+      "id": "peroxide",
+      "label": "hydrogen peroxide",
+      "match": ["hydrogen peroxide", "peroxide", "oxygen bleach", "h2o2"]
+    },
+    {
+      "id": "drain-cleaner",
+      "label": "drain cleaner",
+      "match": ["drain cleaner", "drain opener", "drain unblocker", "caustic soda", "lye", "sodium hydroxide", "potassium hydroxide", "oven cleaner", "caustic cleaner"]
+    },
+    {
+      "id": "urine",
+      "label": "urine or a pet mess",
+      "_aliasNote": "'toilet' is here because bleach going into a used toilet is the classic real-world version of this. It is safe to list because the mode matches the LONGEST alias that covers a span, so 'toilet cleaner' and 'toilet bowl cleaner' still resolve to the acid entry rather than this one.",
+      "match": ["urine", "pee", "peed", "wee", "urinated", "cat pee", "dog pee", "pet mess", "pet accident", "litter tray", "litter box", "nappy", "diaper", "chamber pot", "toilet"]
+    }
+  ],
+
+  "pairs": [
+    {
+      "a": "bleach",
+      "b": "ammonia",
+      "produces": "chloramine gases",
+      "hazard": "Chloramine attacks the lining of your airways. Even a small amount in an unventilated bathroom causes coughing, chest pain, watering eyes and shortness of breath, and a larger release can cause fluid on the lungs.",
+      "notice": "A sharp, choking smell and immediate coughing — and by then you have already breathed some."
+    },
+    {
+      "a": "bleach",
+      "b": "acid",
+      "produces": "chlorine gas",
+      "hazard": "Acid drives chlorine straight out of the bleach as a gas. It burns the eyes, nose, throat and lungs, and the damage can keep developing for hours after you stop smelling it.",
+      "notice": "A strong swimming-pool smell that gets sharp very fast."
+    },
+    {
+      "a": "bleach",
+      "b": "alcohol",
+      "produces": "chloroform and other chlorinated compounds",
+      "hazard": "The mix produces chloroform and related irritants. They affect the nervous system, and some are damaging to the liver and kidneys.",
+      "notice": "A sweetish smell — which is not a reason to stay and identify it."
+    },
+    {
+      "a": "bleach",
+      "b": "peroxide",
+      "produces": "a rapid oxygen release",
+      "hazard": "The two destroy each other in a fast reaction that can spit hot liquid out of the container, and neither is left doing the job you wanted.",
+      "notice": "Sudden foaming and heat."
+    },
+    {
+      "a": "bleach",
+      "b": "drain-cleaner",
+      "produces": "heat and chlorine-containing gases",
+      "hazard": "Drain and oven cleaners are extremely strong chemicals, and what comes off depends on which product you happen to have. It can release chlorine-containing gas, boil, and throw caustic liquid out of the drain.",
+      "notice": "Heat, bubbling and fumes rising out of the plughole."
+    },
+    {
+      "a": "bleach",
+      "b": "urine",
+      "produces": "chloramine gases",
+      "hazard": "Urine contains ammonia, so pouring bleach onto a pet accident, a litter tray or a toilet is the same chloramine reaction — and it usually happens in a small unventilated room with your face right over it.",
+      "notice": "A sharp, choking smell as soon as it hits."
+    },
+    {
+      "a": "peroxide",
+      "b": "acid",
+      "produces": "peracetic acid",
+      "hazard": "Peracetic acid is corrosive and irritates skin, eyes and airways. It is used industrially with proper handling, and it is not something to make on a worktop.",
+      "notice": "Often nothing obvious at first, which is exactly the problem."
+    },
+    {
+      "a": "acid",
+      "b": "drain-cleaner",
+      "produces": "a violent neutralisation",
+      "hazard": "A strong acid and a strong alkali react hard: it boils, and it can throw caustic liquid back up out of the drain into your face.",
+      "notice": "Rapid heat and spitting."
+    },
+    {
+      "a": "ammonia",
+      "b": "drain-cleaner",
+      "produces": "heat and ammonia fumes",
+      "hazard": "The caustic drives ammonia off as a choking vapour, in a confined space, over a drain you are leaning across.",
+      "notice": "A strong ammonia smell and warmth."
+    },
+    {
+      "a": "drain-cleaner",
+      "b": "drain-cleaner",
+      "selfPair": true,
+      "produces": "a violent reaction",
+      "hazard": "Drain products are not all the same chemistry — some are strongly alkaline, some are strongly acidic. Putting a second one down after a first that has not cleared can boil the standing water and spray caustic liquid back out.",
+      "notice": "Heat and bubbling from a drain that is still blocked.",
+      "phrasing": "two different drain or oven cleaners"
+    }
+  ],
+
+  "verdict": "Don't mix them.",
+
+  "unknownPair": "That combination isn't in my table, so don't mix it. I'm not going to guess that something is safe — check the labels on both products, because manufacturers list what theirs must not be combined with, and when in doubt use one product, rinse thoroughly, and use the other afterwards.",
+
+  "always": [
+    "Never mix cleaning products in a closed room — open a window and run an extractor if you use anything strong at all.",
+    "The label on the bottle and its safety data sheet are authoritative. This table is a short list of well-known hazards, not a complete one.",
+    "If you have already mixed something and you feel unwell, get into fresh air and contact poison control or your local emergency number."
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "pack": "chemistry",
+  "label": "Everyday chemistry",
+  "_note": "Titles are written as the QUESTION people actually ask, not as textbook headings — 'Why does iron rust?' retrieves far better than 'Oxidation of ferrous metals', which is the lesson from the first RAG build. Every entry EXPLAINS something; none of them instructs anyone to make anything. `topic` groups the reference cards in the app and is ignored by the ingester.",
+  "entries": [
+    {
+      "title": "Why does iron rust, and why does salt make it worse?",
+      "topic": "oxidation",
+      "text": "Rust is iron giving its electrons away to oxygen. It needs both oxygen and water to happen — iron sitting in genuinely dry air, or under water with no dissolved oxygen, barely rusts at all. The iron atoms lose electrons, the oxygen takes them, and the result is hydrated iron oxide: the flaky orange layer. That flakiness is why iron keeps rusting all the way through, while aluminium stops after a moment. Aluminium's oxide is a tight, transparent skin that seals the surface; iron's is porous and falls off, exposing fresh metal underneath. Salt makes it dramatically faster because dissolved salt carries charge, so the electrons can move between one part of the surface and another far more easily. That is why cars rust near the coast and on gritted winter roads."
+    },
+    {
+      "title": "Why does bread rise?",
+      "topic": "everyday",
+      "text": "Yeast is a living fungus, and it eats sugars in the dough. It breaks them down and gives off carbon dioxide gas and a little alcohol. The gas cannot escape because the dough is stretchy: kneading develops gluten, a network of proteins that traps the bubbles like a balloon skin, so the whole loaf inflates. In the oven the rise briefly speeds up — the gas expands with heat and the alcohol boils off — which is the sudden lift bakers call oven spring. Then the proteins set and the starch gels, the structure goes rigid, and the bread keeps its shape. Soda bread does the same job without yeast: bicarbonate of soda meets an acid such as buttermilk and gives off carbon dioxide immediately, which is why it goes straight in the oven."
+    },
+    {
+      "title": "What is actually happening when a candle burns?",
+      "topic": "everyday",
+      "text": "The wick is not really what burns. The flame's heat melts the wax at the top of the candle, the liquid wax is drawn up the wick by capillary action, and the heat then boils it into a vapour. It is that vapour that burns, reacting with oxygen from the air to make carbon dioxide and water vapour, and releasing heat and light. You can see the proof in the dark gap right at the base of the flame — that is unburnt vapour that has not reached enough oxygen yet. Blow a candle out and the white trail you see is condensed wax vapour, still flammable, which is why you can relight a candle from the smoke a moment after blowing it out. The yellow colour comes from glowing soot particles in the flame."
+    },
+    {
+      "title": "Why does salt melt ice?",
+      "topic": "everyday",
+      "text": "Ice at the surface is always both melting and refreezing, and at zero degrees those two happen at the same rate. Salt does not warm anything up — it interferes with the refreezing half. Salt dissolves into the thin film of liquid water on the ice, and the dissolved particles get in the way of water molecules trying to lock back into the crystal, so freezing slows down while melting carries on. The balance point drops: salty water can stay liquid down to about minus 21 degrees Celsius if it is fully saturated, though in practice road salt stops working well below about minus 10. This is why salt has no effect on properly cold ice with no liquid film, and why the melting ice actually feels colder — the melting itself absorbs heat."
+    },
+    {
+      "title": "Why does soap work?",
+      "topic": "everyday",
+      "text": "Grease and water do not mix, and soap solves that by being both things at once. A soap molecule is a long tail that dislikes water and mixes happily with oil, joined to a head that loves water. In water the molecules gather around a drop of grease with all their tails buried in it and all their heads pointing outward, forming a tiny ball called a micelle. The outside of that ball is now water-friendly, so the grease can be rinsed away carried inside it. Soap also breaks the surface tension of water, which is what lets it wet a surface properly instead of beading up. Against viruses with a fatty outer envelope the tails do something extra: they wedge into that fatty coat and pull it apart, which is why plain soap and time works so well."
+    },
+    {
+      "title": "What happens when an egg cooks?",
+      "topic": "everyday",
+      "text": "Raw egg white is mostly water with proteins folded up in it like tiny balls of wool, each one drifting separately, which is why it is clear and runny. Heat shakes those folded proteins apart — that is denaturing. The unravelled strands then tangle with each other and link up into a mesh, trapping the water, and the liquid turns into a solid that is opaque because the mesh scatters light. This is a one-way change: you cannot unboil an egg by cooling it. It is not only heat that does it — whisking denatures egg white too, which is how meringue works, and acid does it as well, which is why lemon juice or vinegar helps a poached egg set. Overcook it and the mesh tightens and squeezes water out, which is why hard-scrambled eggs go rubbery and weep."
+    },
+    {
+      "title": "Why does bread go stale, and why does the fridge make it worse?",
+      "topic": "everyday",
+      "text": "Stale bread is not simply dry bread. When bread bakes, the starch granules absorb water and swell into a soft gel. As it cools and sits, those starch molecules slowly rearrange themselves back into an ordered, crystalline form and push the water out — a process called retrogradation. The crumb goes firm and crumbly even in a sealed bag, and the moisture that left the starch migrates into the crust, which is why the crust goes soft and leathery while the inside goes hard. Retrogradation is fastest just above freezing, so the fridge is the worst place to keep bread. Warming stale bread reverses some of it temporarily, which is why yesterday's loaf comes back to life in the toaster and then goes hard again quickly."
+    },
+    {
+      "title": "Why do cut apples and avocados go brown?",
+      "topic": "everyday",
+      "text": "Cutting the fruit breaks open cells and lets an enzyme meet compounds it is normally kept apart from. With oxygen from the air, the enzyme converts those compounds into products that link up into brown pigments — the same family of pigments that colour tea and give tanned leather its colour. It is a genuine chemical change, not dirt, and the fruit is still perfectly fine to eat. Anything that stops the enzyme slows it: lemon juice works because acid disables the enzyme and because vitamin C mops up the intermediate stage, cold slows it down, and blanching in hot water destroys the enzyme outright. Sealing the surface from air, as cling film or a layer of water does, removes the oxygen the reaction needs."
+    },
+    {
+      "title": "Why does copper turn green and silver turn black?",
+      "topic": "oxidation",
+      "text": "Both are the metal reacting with its surroundings, but with different partners. Copper first darkens as it oxidises, then over years reacts with moisture and sulphur and carbon dioxide in the air to form a green layer of copper carbonates and sulphates — the patina on the Statue of Liberty and on old church roofs. It clings tightly and protects the copper underneath, which is why those roofs last. Silver tarnish is different: silver barely reacts with oxygen, but it reacts readily with traces of sulphur compounds in air, in wool, in rubber bands and in eggs, forming black silver sulphide. That is why polishing silver removes a little metal every time, and why a chemical dip that converts the sulphide back rather than scraping it off preserves more of the object."
+    },
+    {
+      "title": "What are acids and bases, and what does pH actually measure?",
+      "topic": "acids",
+      "text": "An acid is a substance that gives away hydrogen ions in water; a base accepts them. pH is just a compact way of counting how many of those hydrogen ions are floating about, and the scale runs backwards and in steps of ten: pH 3 is ten times more acidic than pH 4 and a hundred times more than pH 5. Seven is neutral, and pure water sits there. Lemon juice is about 2, vinegar about 2.5, black coffee 5, milk 6.7, baking soda solution about 9, household ammonia 11, and drain cleaner 13 or 14. Put an acid and a base together and they neutralise each other toward the middle, giving a salt and water and releasing heat. Strength and concentration are different things: a strong acid is one that gives up its hydrogen ions completely, which is why a dilute strong acid can be gentler than a concentrated weak one."
+    },
+    {
+      "title": "Why does baking soda fizz with vinegar?",
+      "topic": "acids",
+      "text": "This is an acid meeting a base. Vinegar is dilute acetic acid, and baking soda is sodium bicarbonate, which is mildly alkaline. They neutralise each other, and the immediate product breaks down into carbon dioxide gas, water and sodium acetate. The fizz is simply the carbon dioxide escaping. It is also why the mixture is a poor cleaner despite being a popular one: once they have reacted with each other, you are left with salty water and neither the acid nor the alkali is available to do anything useful. Each is far more effective used on its own — the acid on limescale, the bicarbonate as a mild abrasive and odour absorber. The same reaction is what raises soda bread and self-raising flour, where the gas is trapped in dough instead of escaping into the sink."
+    },
+    {
+      "title": "Why does vinegar remove limescale, and what is hard water?",
+      "topic": "acids",
+      "text": "Rain soaks through chalk and limestone and dissolves calcium and magnesium compounds on the way, and water carrying a lot of them is called hard. When that water is heated or left to evaporate, those compounds come back out of solution as a hard crust of mostly calcium carbonate — limescale in the kettle, the ring in the toilet, the cloudy film on a shower screen. Calcium carbonate dissolves readily in acid, which is why vinegar, lemon juice and citric-acid descalers shift it, and why the same crust hisses gently as it goes. Hard water also stops soap lathering: the calcium reacts with the soap itself to make an insoluble scum, the grey tidemark in a bath, which is why softened water feels slippery and needs less detergent."
+    },
+    {
+      "title": "Why does food go brown when it is fried or roasted?",
+      "topic": "everyday",
+      "text": "Two different reactions, often at once. The Maillard reaction is amino acids and sugars reacting together at high temperature, producing hundreds of new aroma compounds and brown pigments — the crust on bread and steak, the colour of roast coffee and toast. It needs a dry, hot surface, which is why anything wet steams and stays pale until the water has gone, and why patting meat dry before it hits the pan makes such a difference. Caramelisation is separate: it is sugar breaking down on its own at higher temperatures still, with no protein involved, giving the flavour of caramel and toffee. Both are dozens of reactions running at once rather than a single tidy equation, which is why browned food tastes so much more complicated than the same food boiled."
+    },
+    {
+      "title": "Why do onions make you cry?",
+      "topic": "everyday",
+      "text": "An intact onion does nothing. Cutting it ruptures cells and lets enzymes reach sulphur compounds the onion has been storing, and a chain of reactions produces a small volatile molecule that drifts up to your eyes. There it reacts with the water in your tear film to form a mild acid, and your eyes flush it out with tears. Onions build up those sulphur compounds from the soil, so onions grown in sulphur-poor ground are milder. Cooling the onion slows the enzymes down, a sharp knife ruptures fewer cells than a blunt one that crushes, and cutting under running water or with good ventilation carries the vapour away. Cooking destroys the enzyme entirely, which is why a cooked onion never stings and tastes sweeter — the same sulphur compounds break down into sweet-tasting ones."
+    },
+    {
+      "title": "What are the states of matter, and what happens at a phase change?",
+      "topic": "states",
+      "text": "In a solid the particles are locked in place and only vibrate; in a liquid they touch but slide past each other; in a gas they are far apart and moving freely. A phase change is energy going into breaking or forming those bonds rather than into temperature, which is why a pan of melting ice stays at zero degrees until the last ice has gone. That hidden energy is called latent heat, and it is surprisingly large — melting ice absorbs about as much energy as heating the same water from zero to eighty degrees, which is why ice cools a drink so effectively. Going straight from solid to gas without melting is sublimation: dry ice does it, and so does frost disappearing from a windscreen on a dry morning. Evaporation cools whatever is left behind, which is how sweating works."
+    },
+    {
+      "title": "Why does sugar dissolve faster in hot water, and why does anything dissolve at all?",
+      "topic": "states",
+      "text": "Dissolving happens when the attraction between the water molecules and the substance is enough to compete with the substance holding itself together. Sugar and salt both do well because water is a polar molecule — slightly positive at one end, slightly negative at the other — so it can surround and separate charged or polar particles. Oil has no such charges, so water molecules stay stuck to each other instead and the oil is squeezed out; that is the whole of 'like dissolves like'. Heat helps because faster-moving water molecules collide with the surface more often and more energetically. So does breaking a lump into powder, which increases the surface area, and so does stirring, which clears away the saturated layer that otherwise sits next to the crystal. Gases do the opposite — they dissolve worse in hot water, which is why a warm fizzy drink goes flat faster."
+    },
+    {
+      "title": "Why does a fizzy drink go flat, and why does it fizz over when shaken?",
+      "topic": "states",
+      "text": "The drink is bottled with carbon dioxide forced into it under pressure, and a gas dissolves better the harder it is pressed in. Open the bottle and the pressure above the liquid drops to normal air pressure, so the liquid is now holding far more gas than it can keep, and the excess comes out as bubbles over the following hours. Bubbles need somewhere to start — a scratch, a speck of dust, a rough spot on the glass — which is why they form in streams from particular points rather than everywhere at once. Shaking mixes tiny gas bubbles all through the liquid, giving the dissolved gas an enormous number of ready-made places to escape from, so it all comes out at once when you open it. Leave the shaken can to stand and those bubbles rise back to the top, and it behaves normally again."
+    },
+    {
+      "title": "Why does bleach remove colour, and why is it not the same as cleaning?",
+      "topic": "oxidation",
+      "text": "Most colours come from molecules with a long chain of alternating bonds, and that chain is what absorbs particular wavelengths of light. Bleach is a strong oxidiser: it attacks those bonds and breaks the chain, and once broken the molecule no longer absorbs visible light, so the stain looks gone. The material is still there, chemically changed rather than removed, which is the difference between bleaching and washing — soap and detergent lift things off and carry them away, bleach makes them colourless where they lie. It is also why bleach damages fabric and hair with repeated use: it does not carefully pick out the stain, it oxidises whatever it reaches. Disinfecting is a third job again, and works by oxidising the outsides of microbes, which needs contact time rather than scrubbing."
+    },
+    {
+      "title": "Why does milk go sour, and why does sour milk curdle?",
+      "topic": "everyday",
+      "text": "Bacteria that are naturally present feed on lactose, the sugar in milk, and give off lactic acid. As the acid builds the pH falls, and that is the sour taste. Milk's proteins are the reason for the texture change: casein proteins normally float as tiny clusters that repel each other because of their surface charge, which is what makes milk an opaque liquid rather than a solid. Acid cancels that charge, so the clusters stop repelling, clump together and separate out as curds, leaving watery whey behind. Deliberately doing this in a controlled way is how yoghurt, buttermilk and most cheeses are made. It is also why adding lemon juice or a splash of wine to hot milk curdles it, and why heat makes it happen sooner — warmth speeds up the bacteria enormously, which is the whole point of refrigeration."
+    },
+    {
+      "title": "Why does hot oil spit when water gets in it?",
+      "topic": "states",
+      "text": "Frying oil sits well above the boiling point of water — often 180 degrees Celsius against water's 100. A droplet of water that falls in sinks, because water is denser than oil, and then flashes into steam almost instantly. Steam takes up roughly 1,700 times the volume of the water it came from, so that expansion happens underneath the oil and blasts hot oil upwards. It is a physical change, not a chemical one, and it is entirely about the volume difference and the temperature gap. This is also why a pan fire must never be doused with water: the water sinks, flashes to steam and throws burning oil across the room in a fireball. Smothering it — cutting off the oxygen with a lid or a fire blanket — is the only sound response, and calling the fire service if it is not immediately controlled."
+    },
+    {
+      "title": "Why do metals conduct electricity and plastics do not?",
+      "topic": "materials",
+      "text": "In a metal the atoms give up their outermost electrons into a shared pool that drifts freely through the whole structure — the usual picture is positive ions sitting in a sea of electrons. Apply a voltage and that sea moves, which is a current. The same free electrons carry heat efficiently, which is why metals feel cold to touch: they conduct warmth away from your hand quickly rather than actually being colder than the room. In a plastic the electrons are held in fixed bonds between specific atoms in long molecular chains, with nothing free to move, so no current flows and heat travels slowly. It also explains why metals are shiny and bendy: the electron sea reflects light, and layers of ions can slide over one another without breaking specific bonds, so metal deforms instead of shattering."
+    },
+    {
+      "title": "Why does glue stick, and why does superglue set so fast?",
+      "topic": "materials",
+      "text": "Most adhesives work in two stages: they must first wet the surface, flowing into its microscopic roughness while still liquid, and then harden. Once solid they hold partly by mechanical grip in those pores and partly by molecular attraction between adhesive and surface. That is why greasy or dusty surfaces fail — the glue cannot wet them — and why roughening a smooth surface helps. Ordinary white glue hardens by losing water as it dries. Epoxy is different: two components react chemically with each other and link into a rigid network, so it sets by reaction rather than drying and works in a sealed joint. Superglue is triggered by moisture — the trace of water on almost any surface, including your skin, sets off a chain reaction that links the molecules into long chains in seconds, which is why it works so fast and why it bonds fingers so effectively."
+    },
+    {
+      "title": "Why do batteries go flat, and why do they die faster in the cold?",
+      "topic": "materials",
+      "text": "A battery is a chemical reaction held apart. One electrode wants to give up electrons, the other wants to take them, and the only route between them is through your circuit — which is what does the work. The reaction consumes the electrode materials as it goes, so a non-rechargeable battery goes flat when the reactants are used up or the products have coated the electrodes. Charging a rechargeable one drives the same reaction backwards, though never quite perfectly, which is why capacity fades over hundreds of cycles. Cold slows the chemistry and thickens the electrolyte, so the reaction cannot supply current as fast — a cold phone can show a sudden drop and then recover once it warms, because the charge was there all along and the battery simply could not deliver it."
+    },
+    {
+      "title": "Why does mould grow on food, and why can't you just cut it off?",
+      "topic": "everyday",
+      "text": "Mould is a fungus growing from airborne spores that are already everywhere, and it needs moisture, warmth and something to eat. What you can see is only the fruiting body — the fuzzy part making new spores. Underneath, a network of fine threads has grown down into the food, typically far beyond the visible patch, and some moulds also release compounds into the surrounding food. That is why guidance for soft foods like bread, soft fruit and soft cheese is to discard the whole item rather than cut around it, while hard cheese and firm vegetables, which threads penetrate poorly, can have a generous margin cut away. Refrigeration slows mould down without stopping it, and drying, salting and sugaring preserve food by removing the water it needs. Which mould it is, and whether a particular item is safe, is not something anyone can tell you from a photograph."
+    }
+  ]
+}
