@@ -66,6 +66,38 @@ function scrubEndpoint(value) {
   return scrub(value).replace(/\/+$/, ""); // also drop trailing slash(es)
 }
 
+// ---------------------------------------------------------------- failure copy
+// "Couldn't reach the bridge — is the host machine awake?" was the message for
+// every failure of five different processes, and it cost us real time chasing a
+// sleep theory for what was a dead OCR sidecar. Two facts are available at the
+// moment of failure and both are certain, so neither needs guessing:
+//
+//   • the fetch THREW      -> nothing answered; the proxy or the tunnel is down
+//   • the fetch returned !ok -> the proxy is up, so its DEPENDENCY is what broke
+//
+// Each route names the piece it depends on, and both messages point at
+// Diagnostics, which can say definitively which of the five it is.
+const DEPENDS_ON = {
+  chat: "Ollama (the local model)",
+  vision: "the vision model (moondream on Ollama)",
+  ocr: "the OCR sidecar (port 8788)",
+  scoreboard: "the OCR sidecar (port 8788)",
+  transcribe: "the Whisper sidecar (port 8789)",
+  tts: "Piper (the local voices)",
+  knowledge: "Ollama (embeddings for the knowledge library)",
+};
+const SEE_DIAG = "Settings → Diagnostics says which piece is actually down.";
+
+// Nothing answered at all.
+function offlineText(what) {
+  return `Couldn't reach the bridge${what ? " for " + what : ""} — the proxy isn't answering, so either the ` +
+    `host machine is off or the Tailscale funnel is down. ${SEE_DIAG}`;
+}
+// The proxy answered, but the thing behind it is broken.
+function dependencyText(kind) {
+  return `The bridge is up but ${DEPENDS_ON[kind] || "the piece this needs"} isn't responding. ${SEE_DIAG}`;
+}
+
 export const companion = {
   isConfigured() {
     return Boolean(storage.get("companion.endpoint") && storage.get("companion.token"));
@@ -83,6 +115,60 @@ export const companion = {
     token = scrub(token);
     if (endpoint) storage.set("companion.endpoint", endpoint); else storage.remove("companion.endpoint");
     if (token) storage.set("companion.token", token); else storage.remove("companion.token");
+  },
+
+  // ---- diagnostics (bridge GET /health with the token) ----
+  //
+  // The bridge is five independent pieces and for a long time any failure showed
+  // up here as one vague "bridge unreachable", which sent us hunting a
+  // machine-sleep theory that was never the cause. The bridge now reports each
+  // piece separately; this just relays it, and — importantly — describes the
+  // failure modes the app can see that the BRIDGE cannot report on, because if
+  // the proxy is down it can't tell you it's down.
+  async health({ timeoutMs = 6000 } = {}) {
+    if (!this.isConfigured()) {
+      return { reachable: false, status: "unconfigured", summary:
+        "No bridge configured yet — add the endpoint and token in Settings → Companion, or scan the bridge QR.", pieces: [] };
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const t0 = Date.now();
+    try {
+      const cfg = this.getConfig();
+      const r = await fetch(scrubEndpoint(cfg.endpoint) + "/health", {
+        headers: { authorization: "Bearer " + scrub(cfg.token) },
+        signal: ctrl.signal,
+      });
+      const ms = Date.now() - t0;
+      if (!r.ok) {
+        return { reachable: true, status: "degraded-core", ms, pieces: [],
+          summary: `The proxy answered with an error (${r.status}) — the bridge is running but something is wrong with it.` };
+      }
+      const data = await r.json();
+      // A shallow reply means the token didn't match: the proxy deliberately
+      // returns the unauthenticated body rather than leaking anything.
+      if (!Array.isArray(data.pieces)) {
+        return { reachable: true, status: "unauthorized", ms, pieces: [],
+          summary: "The proxy is up but it didn't accept the token — re-check the token in Settings → Companion." };
+      }
+      return { reachable: true, ms, ...data };
+    } catch (err) {
+      // Nothing answered at all. Say which of the two plausible causes it is
+      // rather than blaming "the bridge" as a lump.
+      const timedOut = err && err.name === "AbortError";
+      return {
+        reachable: false,
+        status: "offline",
+        ms: Date.now() - t0,
+        pieces: [],
+        summary: timedOut
+          ? `Nothing answered within ${Math.round(timeoutMs / 1000)}s. The tunnel resolved but the proxy didn't reply — the host machine may be busy or asleep.`
+          : "Couldn't reach the proxy at all. Either the host machine is off, the Tailscale funnel is down, or the endpoint URL changed (Settings → Companion).",
+        fix: "On the host machine, run:  powershell -ExecutionPolicy Bypass -File C:\\Projects\\companion-bridge\\start-bridge.ps1",
+      };
+    } finally {
+      clearTimeout(timer);
+    }
   },
 
   // ---- local Piper voices (bridge /tts) ----
@@ -147,7 +233,7 @@ export const companion = {
       if (r.status === 401) return { ok: false, text: "The bridge rejected the token — re-check Settings → Companion." };
       if (r.status === 429) return { ok: false, text: "Vision is rate limited (it's heavy) — wait a minute and try again." };
       if (r.status === 400) return { ok: false, text: "The bridge refused the image — it may be too large. Try again." };
-      if (!r.ok) return { ok: false, text: "The vision model isn't available on the bridge right now." };
+      if (!r.ok) return { ok: false, text: dependencyText("vision") };
       const data = await r.json();
       if (!data || typeof data.text !== "string" || !data.text) {
         return { ok: false, text: "The vision model returned an empty answer — try again." };
@@ -158,7 +244,7 @@ export const companion = {
         ok: false,
         text: err && err.name === "AbortError"
           ? "Vision took too long (over 2 minutes) — the box may be busy; try again."
-          : "Couldn't reach the bridge for vision — is the host machine awake?",
+          : offlineText("vision"),
       };
     } finally {
       clearTimeout(timer);
@@ -189,14 +275,14 @@ export const companion = {
       if (r.status === 401) return { ok: false, reason: "unauthorized", text: "The bridge rejected the token — re-check Settings → Companion." };
       if (r.status === 429) return { ok: false, reason: "rate_limited", text: "The bridge is busy transcribing — try again shortly." };
       if (r.status === 400) return { ok: false, reason: "bad_audio", text: "That recording was too large or unreadable." };
-      if (!r.ok) return { ok: false, reason: "unavailable", text: "Transcription isn't available on the bridge right now." };
+      if (!r.ok) return { ok: false, reason: "unavailable", text: dependencyText("transcribe") };
       const data = await r.json();
       return data.jobId ? { ok: true, jobId: data.jobId } : { ok: false, reason: "unavailable", text: "The bridge didn't start the job." };
     } catch (err) {
       const timedOut = err && err.name === "AbortError";
       return { ok: false, reason: timedOut ? "timeout" : "offline",
         text: timedOut ? "Uploading took too long — try a shorter recording."
-                       : "Couldn't reach the bridge — is the host machine awake?" };
+                       : offlineText("transcription") };
     } finally { clearTimeout(timer); }
   },
 
@@ -235,7 +321,7 @@ export const companion = {
       if (r.status === 401) return { ok: false, reason: "unauthorized", text: "The bridge rejected the token — re-check Settings → Companion." };
       if (r.status === 429) return { ok: false, reason: "rate_limited", text: "Too many scans just now — wait a moment and try again." };
       if (r.status === 400) return { ok: false, reason: "bad_image", text: "The bridge couldn't use that image — re-aim and try again." };
-      if (!r.ok) return { ok: false, reason: "unavailable", text: "The reader isn't available on the bridge right now." };
+      if (!r.ok) return { ok: false, reason: "unavailable", text: dependencyText("ocr") };
       const data = await r.json();
       return { ok: true, text: data.text || "", lines: data.lines || [], stats: data.stats || null };
     } catch (err) {
@@ -245,7 +331,7 @@ export const companion = {
         ok: false,
         reason: timedOut ? "timeout" : "offline",
         error: String((err && err.message) || err),
-        text: timedOut ? "That took too long — try again." : "Couldn't reach the bridge — is the host machine awake?",
+        text: timedOut ? "That took too long — try again." : offlineText("the reader"),
       };
     } finally {
       clearTimeout(timer);
@@ -274,7 +360,7 @@ export const companion = {
       if (r.status === 401) return { ok: false, reason: "unauthorized", text: "The bridge rejected the token — re-check Settings → Companion." };
       if (r.status === 429) return { ok: false, reason: "rate_limited", text: "Scanning too fast — easing off for a moment." };
       if (r.status === 400) return { ok: false, reason: "bad_image", text: "The bridge couldn't use that image — re-aim and try again." };
-      if (!r.ok) return { ok: false, reason: "unavailable", text: "The scoreboard reader isn't available on the bridge right now." };
+      if (!r.ok) return { ok: false, reason: "unavailable", text: dependencyText("scoreboard") };
       const data = await r.json();
       return { ok: true, parsed: data.parsed || {}, rawText: data.rawText || "", stats: data.stats || null };
     } catch (err) {
@@ -286,7 +372,7 @@ export const companion = {
         error: String((err && err.message) || err),
         text: timedOut
           ? "The scan took too long — try again."
-          : "Couldn't reach the bridge to scan — is the host machine awake?",
+          : offlineText("the scan"),
       };
     } finally {
       clearTimeout(timer);
@@ -386,7 +472,7 @@ export const companion = {
         return { ok: false, source: "error", text: "Rate limited by the bridge — wait a minute and ask again." };
       }
       if (!r.ok) {
-        return { ok: false, source: "error", text: `The bridge answered with an error (${r.status}) — the model backend may be down on the host machine.` };
+        return { ok: false, source: "error", text: dependencyText("chat") + ` (proxy said ${r.status})` };
       }
       const data = await r.json();
       if (!data || typeof data.text !== "string" || !data.text) {
@@ -410,7 +496,7 @@ export const companion = {
         source: "error",
         text: timedOut
           ? "The companion took too long to answer (over 2 minutes) — the host machine may be overloaded."
-          : "Couldn't reach the companion bridge — is the host machine awake and its tunnel running? If it restarted, the endpoint URL may have changed (Settings → Companion).",
+          : offlineText("") + " If the bridge restarted on a new URL, re-check Settings → Companion.",
       };
     } finally {
       clearTimeout(timer);

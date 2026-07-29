@@ -213,11 +213,13 @@ async function watchTick() {
       console.warn("baseball: scoreboard failed —", res.reason, res.error || res.text);
       setWatchNote({
         rate_limited: "Scanning too fast — easing off for a moment.",
-        offline: "Bridge unreachable — is the host machine awake? Manual entry still works.",
+        // Names the layer that's actually silent instead of blaming "the bridge"
+        // as a lump; Diagnostics can say which of the five pieces it is.
+        offline: "The proxy isn't answering — host machine off, or the tunnel is down. Settings → Diagnostics will say which. Manual entry still works.",
         timeout: "That scan took too long — trying again shortly.",
         bad_image: "Couldn't grab a clear camera frame — hold steady and re-aim.",
         unauthorized: "The bridge rejected the token — check Settings → Companion.",
-        unavailable: "The scoreboard reader isn't running on the bridge right now.",
+        unavailable: "The bridge is up but the OCR sidecar (port 8788) isn't responding — manual entry still works.",
       }[res.reason] || res.text || "Scan failed — trying again shortly.");
       if (res.reason === "rate_limited") skipNextTick = true;
       return;

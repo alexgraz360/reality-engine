@@ -13,6 +13,7 @@ import localActions from "./services/actions.js";
 import knowledge from "./services/knowledge.js";
 import glasses from "./services/glasses.js";
 import router from "./services/router.js";
+import { SAMPLE_CARDS, coveredModes } from "./services/sampleCards.js";
 
 // ---------------------------------------------------------------- mode registry
 // USABLE modes only — every entry here renders an "Open" card under its family.
@@ -210,10 +211,97 @@ function setGlassesPreview(on) {
   }
 }
 const glassesPreviewToggle = document.getElementById("glassesPreviewToggle");
-glassesPreviewToggle.addEventListener("change", () => setGlassesPreview(glassesPreviewToggle.checked));
+glassesPreviewToggle.addEventListener("change", () => {
+  setGlassesPreview(glassesPreviewToggle.checked);
+  syncShortcutChips();   // the home chip must never disagree with the checkbox
+});
 document.getElementById("glassesPreviewClose").addEventListener("click", () => {
   glassesPreviewToggle.checked = false; setGlassesPreview(false);
+  syncShortcutChips();
 });
+
+// ---------------------------------------------------------------- card gallery
+// PART C: review the whole glasses experience in one flip-through instead of
+// opening every mode and getting each into the right state. Cards come from
+// services/sampleCards.js and go through the SAME glasses.send() path as live
+// ones, so what you see here is exactly what the adapter would clamp and the
+// BLE transport would get — a card that reads badly here reads badly on the Halo.
+let galleryOn = false;
+let galleryIdx = 0;
+let galleryTimer = 0;
+const GALLERY_MS = 4200;
+
+function openCardGallery() {
+  galleryOn = true;
+  galleryIdx = 0;
+  clearInterval(glancePollTimer);   // stop live polling from overwriting samples
+  document.getElementById("glassesGallery").style.display = "flex";
+  document.getElementById("galleryBtn").classList.add("on");
+  document.getElementById("glassesCaptionText").textContent = "SAMPLE CARDS · REVIEW";
+  showGalleryCard(0);
+  startGalleryAuto();
+}
+
+function closeCardGallery() {
+  galleryOn = false;
+  stopGalleryAuto();
+  document.getElementById("glassesGallery").style.display = "none";
+  document.getElementById("galleryBtn").classList.remove("on");
+  document.getElementById("glassesCaptionText").textContent = "SIMULATION · Halo 256×256 HUD";
+  // Back to live: resume the poll and show the active mode's real card.
+  if (glassesPreviewToggle.checked) {
+    pullActiveGlance();
+    glancePollTimer = setInterval(pullActiveGlance, 800);
+  }
+}
+
+function showGalleryCard(i) {
+  const n = SAMPLE_CARDS.length;
+  galleryIdx = ((i % n) + n) % n;
+  const s = SAMPLE_CARDS[galleryIdx];
+  document.getElementById("ggMode").textContent = s.label;
+  document.getElementById("ggCount").textContent = `${galleryIdx + 1}/${n}`;
+  // Through the real adapter — clamping, rate cap and all. The rate cap is why
+  // auto-cycle is 4.2 s and not 400 ms.
+  glasses.send(s.card);
+}
+
+function startGalleryAuto() {
+  stopGalleryAuto();
+  galleryTimer = setInterval(() => showGalleryCard(galleryIdx + 1), GALLERY_MS);
+  document.getElementById("ggPlay").classList.add("on");
+  document.getElementById("ggPlay").textContent = "❚❚ auto";
+}
+function stopGalleryAuto() {
+  clearInterval(galleryTimer);
+  galleryTimer = 0;
+  const b = document.getElementById("ggPlay");
+  if (b) { b.classList.remove("on"); b.textContent = "▶ auto"; }
+}
+
+document.getElementById("galleryBtn").addEventListener("click", () => {
+  if (galleryOn) closeCardGallery(); else openCardGallery();
+});
+document.getElementById("ggExit").addEventListener("click", closeCardGallery);
+// Manual advance stops the auto-cycle — nobody wants it moving on mid-read.
+document.getElementById("ggNext").addEventListener("click", () => { stopGalleryAuto(); showGalleryCard(galleryIdx + 1); });
+document.getElementById("ggPrev").addEventListener("click", () => { stopGalleryAuto(); showGalleryCard(galleryIdx - 1); });
+document.getElementById("ggPlay").addEventListener("click", () => {
+  if (galleryTimer) stopGalleryAuto(); else startGalleryAuto();
+});
+
+// Verification hook: the gallery's state without driving the DOM.
+window.RE_gallery = {
+  open: openCardGallery, close: closeCardGallery,
+  next: () => { stopGalleryAuto(); showGalleryCard(galleryIdx + 1); },
+  prev: () => { stopGalleryAuto(); showGalleryCard(galleryIdx - 1); },
+  state: () => ({ on: galleryOn, idx: galleryIdx, total: SAMPLE_CARDS.length,
+    label: SAMPLE_CARDS[galleryIdx] && SAMPLE_CARDS[galleryIdx].label,
+    mode: SAMPLE_CARDS[galleryIdx] && SAMPLE_CARDS[galleryIdx].mode,
+    auto: !!galleryTimer }),
+  cards: () => SAMPLE_CARDS,
+  coveredModes,
+};
 
 // A short spoken companion/vision answer, condensed into a glance card. The
 // headline is the mode (or "Companion"); the body is the first sentence(s).
@@ -288,12 +376,110 @@ for (const fam of FAMILIES) {
   roadmapGroups.appendChild(group);
 }
 
-// The companion strip opens ✦ (never collapses it — tapping "Companion" should
-// always show the companion). Same path the FAB uses, no logic duplicated.
-document.getElementById("companionStrip").addEventListener("click", () => {
+// The companion strip's headline opens ✦ (never collapses it — tapping
+// "Companion" should always show the companion). Same path the FAB uses.
+document.getElementById("companionStripOpen").addEventListener("click", () => {
   primeTTS();
   if (cardState !== "open") openCard(cardState === "closed");
 });
+
+// ---------------------------------------------------------------- shortcuts
+// PART B of the cleanup. The Glasses preview, Look and the wake word were only
+// reachable from inside the companion card, and Alex genuinely could not find
+// Glasses. These chips and the Settings buttons are the SAME controls — every
+// one of them drives the existing checkbox or click handler rather than
+// duplicating its logic, so the in-card controls keep working and there is only
+// ever one source of truth for each toggle.
+function runShortcut(kind) {
+  switch (kind) {
+    case "ask":
+      primeTTS();
+      if (cardState !== "open") openCard(cardState === "closed");
+      setTimeout(() => { const i = document.getElementById("companionQuestion"); if (i) i.focus(); }, 150);
+      return "Companion open — type or tap 🎤.";
+    case "look":
+      primeTTS();
+      if (cardState !== "open") openCard(cardState === "closed");
+      // Click the real Look button: one code path for looking, forever.
+      setTimeout(() => document.getElementById("companionLookBtn").click(), 120);
+      return "Starting a look…";
+    case "talk": {
+      primeTTS();
+      if (cardState !== "open") openCard(cardState === "closed");
+      setTimeout(() => document.getElementById("companionMicBtn").click(), 120);
+      return "Listening…";
+    }
+    case "glasses": {
+      const t = document.getElementById("glassesPreviewToggle");
+      t.checked = !t.checked;
+      // Fire the toggle's own change handler rather than calling
+      // setGlassesPreview() directly, so the checkbox and the preview can never
+      // disagree about whether it's on.
+      t.dispatchEvent(new Event("change"));
+      return t.checked ? "Glasses preview on — it stays up as you move around the app." : "Glasses preview off.";
+    }
+    case "cards": {
+      const t = document.getElementById("glassesPreviewToggle");
+      if (!t.checked) { t.checked = true; t.dispatchEvent(new Event("change")); }
+      openCardGallery();
+      return "Card gallery — flipping through a sample card from every mode.";
+    }
+    case "wake": {
+      const t = document.getElementById("wakeToggle");
+      t.checked = !t.checked;
+      t.dispatchEvent(new Event("change"));
+      if (t.checked) {
+        // The consent copy lives in the companion card; if someone turns this on
+        // from home they must still see it.
+        if (cardState !== "open") openCard(cardState === "closed");
+        return "Wake word on — the mic stays on while this screen is open. Details in the ✦ card.";
+      }
+      return "Wake word off.";
+    }
+    case "notes":
+      document.getElementById("notesBtn").click();
+      return "";
+  }
+  return "";
+}
+
+// Chips reflect state, so "is Glasses on?" is answerable at a glance.
+function syncShortcutChips() {
+  const g = document.getElementById("glassesPreviewToggle");
+  const w = document.getElementById("wakeToggle");
+  for (const b of document.querySelectorAll("[data-shortcut]")) {
+    const k = b.dataset.shortcut;
+    if (k === "glasses") b.classList.toggle("on", !!(g && g.checked));
+    if (k === "wake") b.classList.toggle("on", !!(w && w.checked));
+  }
+  const sg = document.getElementById("sxGlasses");
+  if (sg) sg.classList.toggle("accent", !!(g && g.checked));
+  const sw = document.getElementById("sxWake");
+  if (sw) sw.classList.toggle("accent", !!(w && w.checked));
+}
+
+for (const b of document.querySelectorAll("[data-shortcut]")) {
+  b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const msg = runShortcut(b.dataset.shortcut);
+    syncShortcutChips();
+    if (msg) showToast(msg);
+  });
+}
+// The same four in Settings, for people who look there first.
+const SX = { sxGlasses: "glasses", sxCards: "cards", sxLook: "look", sxWake: "wake" };
+for (const [id, kind] of Object.entries(SX)) {
+  const el = document.getElementById(id);
+  if (!el) continue;
+  el.addEventListener("click", () => {
+    const msg = runShortcut(kind);
+    syncShortcutChips();
+    const note = document.getElementById("sxNote");
+    if (note) note.textContent = msg || "";
+    // Looking or talking needs the sheet out of the way.
+    if (kind === "look" || kind === "cards") closeSheet("settingsSheet");
+  });
+}
 
 // ---------------------------------------------------------------- lifecycle
 async function openMode(entry) {
@@ -379,7 +565,10 @@ document.getElementById("settingsBtn").addEventListener("click", () => {
   document.getElementById("companionToken").value = cfg.token;
   document.getElementById("companionSaveNote").textContent = "";
   document.getElementById("storageCount").textContent = String(storage.keys().length);
+  syncShortcutChips();
   openSheet("settingsSheet");
+  // Opening Settings is exactly when someone wants to know what's running.
+  runDiagnostics();
 });
 
 function refreshCompanionStatus() {
@@ -415,6 +604,180 @@ document.getElementById("companionTestBtn").addEventListener("click", async () =
   note.textContent = "Testing… (a local model can take ~10 s)";
   const res = await companion.ask("Reply with a 5-word hello.", "");
   note.textContent = res.ok ? "Connected — the companion answered." : res.text;
+});
+
+// ---------------------------------------------------------------- diagnostics
+// The bridge is five separate processes. Naming the broken one is the whole
+// point of this panel: a generic "unreachable" once had us chasing a
+// machine-sleep theory for a problem that was a dead OCR sidecar.
+let diagBusy = false;
+let lastHealth = null;
+
+async function runDiagnostics({ silent = false } = {}) {
+  if (diagBusy) return lastHealth;
+  diagBusy = true;
+  const sum = document.getElementById("diagSummary");
+  const list = document.getElementById("diagList");
+  const foot = document.getElementById("diagFootNote");
+  if (!silent && sum) {
+    sum.className = "diagSummary";
+    sum.textContent = "Checking each piece…";
+    if (list) list.innerHTML = "";
+    if (foot) foot.textContent = "";
+  }
+  try {
+    const h = await companion.health();
+    lastHealth = h;
+    setBridgeDot(h);
+    if (!sum) return h;
+
+    const tone = !h.reachable || h.status === "offline" || h.status === "degraded-core" ? "bad"
+      : h.status === "ok" ? "ok" : h.status === "unconfigured" ? "" : "warn";
+    sum.className = "diagSummary" + (tone ? " " + tone : "");
+    sum.textContent = h.summary || (h.reachable ? "Bridge reachable." : "Bridge not reachable.");
+
+    if (list) {
+      list.innerHTML = "";
+      // Nothing answered: the bridge can't report on itself, so the app says
+      // what it knows and how to fix it.
+      if (!h.pieces.length) {
+        if (h.fix) {
+          const f = document.createElement("div");
+          f.className = "diagFix";
+          f.textContent = h.fix;
+          list.appendChild(f);
+        }
+      }
+      for (const p of h.pieces) {
+        const row = document.createElement("div");
+        row.className = "diagPiece";
+        const dot = document.createElement("span");
+        dot.className = "diagDot " + (p.ok ? "up" : "down");
+        const body = document.createElement("div");
+        body.className = "diagBody";
+        const name = document.createElement("div");
+        name.className = "diagName";
+        name.textContent = p.label || p.id;
+        if (p.critical) {
+          const c = document.createElement("span");
+          c.className = "diagCrit";
+          c.textContent = "REQUIRED";
+          name.appendChild(c);
+        }
+        body.appendChild(name);
+        const det = document.createElement("div");
+        det.className = "diagDetail";
+        det.textContent = p.detail + (p.ms != null ? ` · ${p.ms} ms` : "") +
+          (p.uptimeSec != null ? ` · up ${fmtUptime(p.uptimeSec)}` : "");
+        body.appendChild(det);
+        if (!p.ok) {
+          if (p.error) {
+            const e = document.createElement("div");
+            e.className = "diagErr";
+            e.textContent = p.error + (p.feature ? ` — this breaks ${p.feature}.` : "");
+            body.appendChild(e);
+          }
+          if (p.fix) {
+            const f = document.createElement("div");
+            f.className = "diagFix";
+            f.textContent = p.fix;
+            body.appendChild(f);
+          }
+        }
+        row.appendChild(dot);
+        row.appendChild(body);
+        list.appendChild(row);
+      }
+    }
+    if (foot) {
+      const bits = [];
+      if (h.startupNote) bits.push("⚠ " + h.startupNote);
+      if (h.arrivedVia) bits.push(h.arrivedVia === "funnel"
+        ? "Reached over the Tailscale funnel."
+        : "Reached directly on the local network.");
+      if (h.ms != null) bits.push(`round trip ${h.ms} ms`);
+      foot.textContent = bits.join("  ·  ");
+    }
+    return h;
+  } finally {
+    diagBusy = false;
+  }
+}
+
+function fmtUptime(sec) {
+  if (sec < 90) return `${sec}s`;
+  if (sec < 5400) return `${Math.round(sec / 60)}m`;
+  if (sec < 172800) return `${Math.round(sec / 3600)}h`;
+  return `${Math.round(sec / 86400)}d`;
+}
+
+// The home dot: four states, from the same single check the panel uses.
+function setBridgeDot(h) {
+  const el = document.getElementById("bridgeDot");
+  const txt = document.getElementById("bridgeDotText");
+  if (!el || !txt) return;
+  let cls = "offline", label = "bridge offline";
+  if (!h) { cls = "checking"; label = "checking…"; }
+  else if (h.status === "unconfigured") { cls = ""; label = "no bridge set"; }
+  else if (h.status === "unauthorized") { cls = "offline"; label = "token rejected"; }
+  else if (!h.reachable) { cls = "offline"; label = "bridge offline"; }
+  else if (h.status === "ok") { cls = "ok"; label = "bridge ok"; }
+  else if (h.status === "degraded-core") { cls = "offline"; label = (h.down && h.down[0] ? h.down[0] : "core") + " down"; }
+  else { cls = "degraded"; label = (h.down || []).length === 1 ? h.down[0] + " down" : `${(h.down || []).length} pieces down`; }
+  el.className = cls;
+  txt.textContent = label;
+  el.title = (h && h.summary) ? h.summary + " — tap for full diagnostics" : "Tap for full diagnostics";
+}
+
+// A cheap periodic check, not a busy loop: once on load, then every 2 minutes,
+// and immediately when the app comes back to the foreground (which is when a
+// stale dot would actually mislead someone).
+const BRIDGE_POLL_MS = 120_000;
+let bridgePollTimer = 0;
+async function pollBridge() {
+  if (!companion.isConfigured()) { setBridgeDot({ status: "unconfigured", reachable: false }); return; }
+  const h = await companion.health({ timeoutMs: 5000 });
+  lastHealth = h;
+  setBridgeDot(h);
+}
+function startBridgePolling() {
+  clearInterval(bridgePollTimer);
+  pollBridge();
+  bridgePollTimer = setInterval(pollBridge, BRIDGE_POLL_MS);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") pollBridge();
+});
+document.getElementById("bridgeDot").addEventListener("click", () => {
+  document.getElementById("settingsBtn").click();
+  setTimeout(() => {
+    const s = document.getElementById("diagSummary");
+    if (s) s.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, 120);
+});
+startBridgePolling();
+
+document.getElementById("diagRetryBtn").addEventListener("click", () => runDiagnostics());
+document.getElementById("diagCopyBtn").addEventListener("click", async () => {
+  const h = lastHealth;
+  const foot = document.getElementById("diagFootNote");
+  if (!h) { if (foot) foot.textContent = "Run a check first."; return; }
+  // Deliberately excludes the endpoint URL and token — a copied report is the
+  // kind of thing that gets pasted somewhere public.
+  const lines = [
+    `Reality Engine bridge report — ${new Date().toISOString()}`,
+    `status: ${h.status}${h.reachable ? "" : " (nothing answered)"}`,
+    `summary: ${h.summary || ""}`,
+    ...h.pieces.map((p) => `  [${p.ok ? "up" : "DOWN"}] ${p.label}: ${p.detail}` +
+      (p.ok ? "" : `\n        error: ${p.error}\n        fix: ${p.fix}`)),
+    h.fix ? `fix: ${h.fix}` : "",
+  ].filter(Boolean);
+  try {
+    await navigator.clipboard.writeText(lines.join("\n"));
+    if (foot) foot.textContent = "Report copied (endpoint and token deliberately left out).";
+  } catch (e) {
+    if (foot) foot.textContent = "Couldn't copy — your browser blocked clipboard access.";
+  }
 });
 
 document.getElementById("clearStorageBtn").addEventListener("click", () => {
