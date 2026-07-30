@@ -74,6 +74,8 @@ function ordinal(n) {
 // ---------------------------------------------------------------- instant read
 // Deterministic. No /chat. This is what gets spoken on every new pitch.
 function instantRead() {
+  // Same pre-answer moment as football: a read on screen means plus-Detail is next.
+  if (svc && svc.companion && svc.companion.warmOnIntent) svc.companion.warmOnIntent("chat", { reason: "baseball-read" });
   const pred = prediction();
   const r = pred ? baseballData.instantRead(pred, names()) : null;
   if (r && r.line) { lastInstant = r; return r.line; }

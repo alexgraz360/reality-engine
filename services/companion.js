@@ -117,6 +117,74 @@ export const companion = {
     if (token) storage.set("companion.token", token); else storage.remove("companion.token");
   },
 
+  // ---- warm on intent (bridge POST /warm) ----
+  //
+  // THE MEASURED WIN. Cold, the first token takes ~7.3 s; warm, ~340 ms. Firing
+  // this the moment the app knows a request is LIKELY — a mode opening, the mic
+  // opening, the wake word firing — overlaps the model load with the second or
+  // two the user is still acting, and costs no standing RAM (unlike pinning,
+  // which was measured and rejected at 4.7 GB and 97.5% of the commit limit).
+  //
+  // THIS IS AN OPTIMIZATION, NEVER A DEPENDENCY. It cannot block, cannot throw,
+  // cannot be awaited into a UI path, and no failure of it — error, 404 on an
+  // older bridge, or a hang — may change one pixel of what the user sees. Every
+  // exit below returns a reason string for the verification harness and nothing
+  // else acts on it.
+  _warm: {
+    lastAt: 0,          // last SUCCESSFUL dispatch, for the idle-window debounce
+    inFlight: false,    // never more than one at a time
+    lastRole: null,
+    calls: [],          // verification only: what actually went out
+  },
+
+  // Roughly one warm per idle minute. Opening four modes in ten seconds must
+  // produce ONE call — a warm-on-intent that spams the bridge is worse than none.
+  warmDebounceMs: 60_000,
+
+  warmOnIntent(role = "chat", { reason = "" } = {}) {
+    const w = this._warm;
+    const now = Date.now();
+    // Silence beats a doomed request.
+    if (!this.isConfigured()) return "skipped:unconfigured";
+    if (w.inFlight) return "skipped:in-flight";
+    if (now - w.lastAt < this.warmDebounceMs) return "skipped:debounced";
+    // If the bridge is known to be down there is no point asking it to warm.
+    if (this._lastHealthOk === false) return "skipped:bridge-known-down";
+    // Already resident: warming again buys nothing.
+    if (role === "chat" && this._lastWarm && this._lastWarm.chat) return "skipped:already-warm";
+    if (role === "vision" && this._lastWarm && this._lastWarm.vision) return "skipped:already-warm";
+
+    w.inFlight = true;
+    w.lastAt = now;
+    w.lastRole = role;
+    w.calls.push({ role, reason, at: now });
+    if (w.calls.length > 50) w.calls = w.calls.slice(-50);
+
+    const cfg = this.getConfig();
+    const ctrl = new AbortController();
+    const clearFlag = () => { w.inFlight = false; };
+    // TWO independent releases of the in-flight flag, because verification found
+    // one wasn't enough. Aborting the signal normally makes fetch reject, which
+    // runs .finally() — but a fetch that IGNORES the abort (a stalled proxy, a
+    // service worker, a stub) would leave inFlight stuck true forever and
+    // silently disable warming for the rest of the session. So a plain timer
+    // clears it regardless of what fetch decides to do.
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const failsafe = setTimeout(clearFlag, 6000);
+    fetch(scrubEndpoint(cfg.endpoint) + "/warm", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + scrub(cfg.token) },
+      body: JSON.stringify({ role }),
+      signal: ctrl.signal,
+    })
+      .then((r) => { if (!r.ok) console.debug(`warm: bridge said ${r.status} (ignored)`); })
+      // Swallowed on purpose: an older bridge 404s here and that must be a no-op.
+      .catch((e) => console.debug("warm: ignored —", (e && e.name) || e))
+      .finally(() => { clearTimeout(timer); clearTimeout(failsafe); clearFlag(); });
+
+    return "sent:" + role;
+  },
+
   // ---- diagnostics (bridge GET /health with the token) ----
   //
   // The bridge is five independent pieces and for a long time any failure showed
@@ -151,11 +219,20 @@ export const companion = {
         return { reachable: true, status: "unauthorized", ms, pieces: [],
           summary: "The proxy is up but it didn't accept the token — re-check the token in Settings → Companion." };
       }
+      // Cache what warmOnIntent needs so it can skip pointless calls without
+      // making a request of its own to find out.
+      this._lastHealthOk = true;
+      const ollama = (data.pieces || []).find((p) => p.id === "ollama");
+      this._lastWarm = (ollama && ollama.warm) || null;
       return { reachable: true, ms, ...data };
     } catch (err) {
       // Nothing answered at all. Say which of the two plausible causes it is
       // rather than blaming "the bridge" as a lump.
       const timedOut = err && err.name === "AbortError";
+      // Remember the bridge is down so warmOnIntent stays quiet instead of
+      // firing requests that cannot succeed.
+      this._lastHealthOk = false;
+      this._lastWarm = null;
       return {
         reachable: false,
         status: "offline",

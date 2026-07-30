@@ -912,6 +912,10 @@ function buildSystemContext() {
 // spoken before the snap (~1s, all of it Piper). The model is never on the
 // critical path for a live read — it is only the optional "more detail" below.
 function instantRead() {
+  // A read existing is the moment the plus-Detail button becomes the likely next
+  // action, so this is the pre-answer signal for football. The service debounces
+  // to ~1/minute, which matters because Watch mode calls this every 6 seconds.
+  if (svc && svc.companion && svc.companion.warmOnIntent) svc.companion.warmOnIntent("chat", { reason: "football-read" });
   const r = footballData.instantRead(tendencies(), defenseTendencies(), dataSituation());
   if (r) { lastInstant = r; return r.line; }
   // No team picked (or no data): still give something useful and immediate.

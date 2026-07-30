@@ -377,6 +377,10 @@ function grabFrame() {
 
 async function look() {
   if (busy) return "Still working on the last one.";
+  // VISION intent only. Never chat here: chat+vision co-residency was measured
+  // at 97.5% of the commit limit and is the sequence that likely killed the
+  // sidecars, so exactly one model is ever warmed per trigger.
+  if (svc && svc.companion && svc.companion.warmOnIntent) svc.companion.warmOnIntent("vision", { reason: "chemistry-look" });
   if (!camStream) {
     const ok = await enableCamera();
     if (!ok) return finish({ kind: "look", subject: "", sources: [],

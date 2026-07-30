@@ -530,6 +530,9 @@ async function openMode(entry) {
     return;
   }
   if (active) return; // one mode active at a time
+  // WARM ON INTENT: opening a mode is the earliest reliable signal that a
+  // /chat request is coming. Fire-and-forget - openMode never waits on it.
+  companion.warmOnIntent("chat", { reason: "mode-open:" + entry.id });
   modeTitle.textContent = entry.title;
   modeTag.textContent = entry.family.toUpperCase();
   modeTag.className = "tag " + entry.family.toLowerCase();
@@ -733,6 +736,9 @@ async function runDiagnostics({ silent = false } = {}) {
     }
     if (foot) {
       const bits = [];
+      // "Why was it slow / why did that fail?" — if the supervisor put something
+      // back recently, say so rather than leaving it a mystery.
+      if (h.recovery && h.recovery.text) bits.push("🔁 " + h.recovery.text);
       if (h.startupNote) bits.push("⚠ " + h.startupNote);
       if (h.arrivedVia) bits.push(h.arrivedVia === "funnel"
         ? "Reached over the Tailscale funnel."
@@ -914,6 +920,7 @@ function transcriptNote(text) { // transient system line (errors etc.) — not p
 }
 
 function openCard(withAutoListen) {
+  companion.warmOnIntent("chat", { reason: "companion-open" });   // fire-and-forget
   card.style.display = "flex";
   cardState = "open";
   unreadReply = false;
@@ -1565,6 +1572,9 @@ function handleWakeAudio(transcript) {
   const { triggered, rest } = detectWake(transcript, wakePhrase);
   if (!triggered) { wakeArmedText = ""; return; }   // discarded — never stored
   wakeLastTriggerAt = Date.now();
+  // The wake word firing is the strongest intent signal there is: a request is
+  // certainly coming, and the user is still mid-sentence. Fire-and-forget.
+  companion.warmOnIntent("chat", { reason: "wake-word" });
   wakeArmedText = rest;
   setWakeIndicator(true, rest ? `heard: ${rest}` : "listening for your request…");
   // Let the utterance finish so we capture the whole request, then hand off.
@@ -1646,6 +1656,9 @@ function syncWakeUI() {
 
 function startListening() {
   if (!SR || listening) return; // the guard: auto-start + manual tap can never double-start
+  // The mic opening means a question is seconds away - the ideal moment to
+  // absorb the model load while the user is still speaking.
+  companion.warmOnIntent("chat", { reason: "mic-open" });
   wakeMode = false;             // a manual tap is always a normal dictation
   stopSpeaking(); // mic and speaker never run together
   const input = document.getElementById("companionQuestion");
@@ -2569,6 +2582,8 @@ function frameToJpegBase64(source, w, h) {
 
 async function visionAsk(imageBase64, question) {
   if (looking || asking) return;
+  // Vision intent -> warm the VISION model only, never chat.
+  companion.warmOnIntent("vision", { reason: "look" });
   looking = true;
   stopDictation(true);
   stopSpeaking();
