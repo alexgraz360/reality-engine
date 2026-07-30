@@ -67,6 +67,62 @@ function canonicalTeam(code) {
   return NFL_TEAMS[mapped] ? mapped : null;
 }
 
+function teamName(code) { return NFL_TEAMS[canonicalTeam(code) || ""] || code || ""; }
+
+// Find a team in free speech, by nickname ("the Chiefs") or code ("KC"), and work
+// out WHICH SIDE the sentence is talking about. This is the parser behind
+// "no, the Chiefs are on offense" re-filling exactly one slot: the offense slot's
+// parser only claims the sentence when the sentence is about the offense.
+//
+// Two teams in one sentence ("Chiefs and Eagles") assigns by order, which is what
+// people mean by "Chiefs versus Eagles".
+function teamFromText(text, side) {
+  const raw = " " + String(text || "").replace(/[^A-Za-z0-9\s]/g, " ").replace(/\s+/g, " ") + " ";
+  const t = raw.toLowerCase();
+  const found = [];
+  for (const [code, nick] of Object.entries(NFL_TEAMS)) {
+    // NICKNAMES match case-insensitively — that's what people say out loud.
+    const words = [nick.toLowerCase()];
+    // 49ers reads as "niners" far more often than "49ers" out loud.
+    if (code === "SF") words.push("niners", "49ers");
+    let hit = -1, via = "";
+    for (const w of words) {
+      const i = t.indexOf(" " + w + " ");
+      if (i !== -1) { hit = i; via = w; break; }
+    }
+    // TEAM CODES only match in their original UPPERCASE. Verification caught why:
+    // "no, the Chiefs are on offense" set the offense to NO — the Saints — because
+    // the Saints' code is also the word "no". LA is a word too. Someone typing
+    // "KC" means Kansas City; someone saying "no" does not mean New Orleans.
+    if (hit === -1) {
+      const i = raw.indexOf(" " + code + " ");
+      if (i !== -1) { hit = i; via = code; }
+    }
+    if (hit !== -1) found.push({ code, at: hit, via });
+  }
+  if (!found.length) return null;
+  found.sort((a, b) => a.at - b.at);
+
+  // An explicit side wins over position: "the Chiefs are on defense".
+  const offenseWord = /\b(on offense|offence|have the ball|possession|with the ball|driving|are up|attacking)\b/;
+  const defenseWord = /\b(on defense|on defence|defending|against|versus|vs|facing)\b/;
+  const saysOffense = offenseWord.test(t), saysDefense = defenseWord.test(t);
+
+  if (found.length === 1) {
+    const only = found[0].code;
+    if (side === "offense") {
+      if (saysDefense && !saysOffense) return null;      // that sentence is about the defense
+      return only;
+    }
+    if (saysOffense && !saysDefense) return null;        // ditto, other way round
+    return saysDefense ? only : null;                    // a bare team name defaults to offense
+  }
+  // Two or more named: first is the offense, second the defense — unless the
+  // sentence explicitly flips it ("Chiefs against the Eagles" still puts KC first).
+  const [a, b] = found;
+  return side === "offense" ? a.code : b.code;
+}
+
 function freshSituation() {
   return {
     down: 1, distance: 10, zone: "own-territory",
@@ -128,6 +184,9 @@ export default {
   describeCapabilities() {
     return [{
       id: "football.situation", label: "Football", needsMode: true,
+      // Resolve teams/down/distance/zone from the scoreboard BEFORE the read runs.
+      // The shell does the filling; this flag is the whole opt-in.
+      fillsSlots: true,
       patterns: [/\b(1st|2nd|3rd|4th|first|second|third|fourth)\s+(and|&)\s+(\d{1,2}|goal|long|short|inches)\b/i,
                  /\bread (the )?(play|game|defense|defence)\b/i,
                  /\bwhat('?s| is) the (call|read) here\b/i],
@@ -136,6 +195,117 @@ export default {
       // router just hands the text over once the mode is active.
       run: (text, ctx) => (ctx.callActiveCommand ? ctx.callActiveCommand(text) : null),
     }];
+  },
+
+  // ---------------------------------------------------------------- slots
+  // WHAT THIS MODE NEEDS TO KNOW, declared rather than demanded through a form.
+  //
+  // VISION COMES FIRST for every one of these, because the scoreboard on screen
+  // already carries the teams, the down, the distance and the field position.
+  // Asking "what down is it?" while looking at a readable scoreboard is the exact
+  // failure the slot layer exists to prevent — so `sources` puts vision ahead of
+  // the question, and only `down` and `distance` are allowed to ask at all.
+  //
+  // Everything here reuses the SAME scoreboard derivation the tap path uses
+  // (deriveSituation), so the camera path and the voice path can never disagree
+  // about what a scoreboard said.
+  describeSlots() {
+    const fromBoard = (payload, key) => {
+      if (!payload || !payload.parsed) return null;
+      const d = deriveSituation(payload.parsed, sit);
+      const v = d.fields[key];
+      // Remember the orientation the scan worked out, exactly as a tap scan does.
+      if (d.orientation) teamsAutoSet = d.orientation;
+      return v === undefined ? null : v;
+    };
+    return [
+      {
+        id: "offense", label: "the offense", required: false,
+        sources: ["utterance", "vision", "context"], visionSource: "scoreboard",
+        parse: (t) => teamFromText(t, "offense"),
+        fromVision: (p) => fromBoard(p, "offense"),
+        fromContext: () => sit.offense || null,
+        current: () => sit.offense || null,
+        // If the named team was on defence, SWAP — "no, the Chiefs are on offense"
+        // when it had them the other way round means the sides are reversed, not
+        // that the defence is now unknown.
+        apply: (v) => { if (sit.defense === v) sit.defense = sit.offense; sit.offense = v; persist(); renderPanel(); },
+        say: (v) => `${teamName(v)} on offense`,
+      },
+      {
+        id: "defense", label: "the defense", required: false,
+        sources: ["utterance", "vision", "context"], visionSource: "scoreboard",
+        parse: (t) => teamFromText(t, "defense"),
+        fromVision: (p) => fromBoard(p, "defense"),
+        fromContext: () => sit.defense || null,
+        current: () => sit.defense || null,
+        apply: (v) => { if (sit.offense === v) sit.offense = sit.defense; sit.defense = v; persist(); renderPanel(); },
+        say: (v) => `${teamName(v)} on defense`,
+      },
+      {
+        id: "down", label: "the down", required: true,
+        // NO 'context' on purpose. Verification caught this: with a context source
+        // the down resolved from the STANDING value (which always exists, because
+        // a situation always has a down) and the mode therefore never asked, even
+        // with an unreadable scoreboard — it silently reused the last play's down.
+        // Down and distance are per-play facts and must be re-established each
+        // time; the teams and the field zone genuinely do persist, and keep theirs.
+        sources: ["utterance", "vision"], visionSource: "scoreboard",
+        ask: "What down is it?",
+        parse: (t) => {
+          const dd = parseDownDistance(String(t).toLowerCase());
+          if (dd) return dd.down;
+          const m = String(t).toLowerCase().match(/\b(first|second|third|fourth|1st|2nd|3rd|4th|one|two|three|four|[1-4])\b/);
+          return m ? (NUM[m[1]] || parseInt(m[1], 10) || null) : null;
+        },
+        fromVision: (p) => fromBoard(p, "down"),
+        fromContext: () => sit.down || null,
+        // `current` deliberately returns null: the situation always HAS a down
+        // (it defaults to 1st), so treating that as "already known" would stop the
+        // scoreboard ever being read. The default below is what stops it blocking.
+        current: () => null,
+        default: 1,
+        apply: (v) => { sit.down = v; persist(); renderPanel(); },
+        say: (v) => `${ordinal(v)} down`,
+      },
+      {
+        id: "distance", label: "the distance", required: true,
+        sources: ["utterance", "vision"], visionSource: "scoreboard",   // per-play, like the down
+        ask: "How many yards to go?",
+        parse: (t) => {
+          const dd = parseDownDistance(String(t).toLowerCase());
+          if (dd) return dd.distance;
+          const s = String(t).toLowerCase();
+          if (/\bgoal\b/.test(s)) return 0;
+          if (/\blong\b/.test(s)) return 10;
+          if (/\bshort\b|\binches\b/.test(s)) return 2;
+          const m = s.match(/\b(\d{1,2})\b/) || s.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b/);
+          if (!m) return null;
+          const n = NUM[m[1]] !== undefined ? NUM[m[1]] : parseInt(m[1], 10);
+          return Number.isFinite(n) ? n : null;
+        },
+        fromVision: (p) => fromBoard(p, "distance"),
+        current: () => null,
+        default: 10,
+        apply: (v) => { sit.distance = v; persist(); renderPanel(); },
+        say: (v) => (v === 0 ? "goal to go" : `${v} to go`),
+      },
+      {
+        id: "zone", label: "the field position", required: false,
+        sources: ["utterance", "vision", "context"], visionSource: "scoreboard",
+        parse: (t) => {
+          const s = String(t).toLowerCase();
+          const z = ZONES.find((x) => s.includes(x.label.toLowerCase()) || s.includes(x.id.replace(/-/g, " ")));
+          return z ? z.id : null;
+        },
+        fromVision: (p) => fromBoard(p, "zone"),
+        fromContext: () => sit.zone || null,
+        current: () => null,
+        default: "own-territory",
+        apply: (v) => { sit.zone = v; persist(); renderPanel(); },
+        say: (v) => (ZONES.find((z) => z.id === v) || {}).label || v,
+      },
+    ];
   },
 
   getSystemContext() { return buildSystemContext(); },
@@ -168,7 +338,11 @@ export default {
     }
 
     // The read (check before the question guard — "what should I watch" is a read).
-    if (/(read it|read this|what should i watch|what'?s the read|whats the read|give me (a|the) read|break it down)/.test(q)) {
+    // "read the play" / "read the game" are the phrasings the ROUTER already
+    // advertises, so handleCommand has to know them too — otherwise the spoken
+    // sentence that reaches this mode is declined and falls through to the model,
+    // which is the opposite of the deterministic instant read.
+    if (/(read it|read this|read the (play|game|defense|defence)|what should i watch|what'?s the read|whats the read|give me (a|the) read|break it down)/.test(q)) {
       return generateRead();
     }
 
@@ -606,18 +780,26 @@ async function runScan(b64) {
   }
 }
 
-// Map the parsed bug onto the situation. Returns the list of fields actually set.
-function applyScoreboard(p) {
-  const filled = [];
-  if (Number.isInteger(p.down) && p.down >= 1 && p.down <= 4) { sit.down = p.down; filled.push("down"); }
-  if (Number.isInteger(p.distance) && p.distance >= 0) { sit.distance = p.distance; filled.push("distance"); }
-  if (Number.isInteger(p.quarter)) { sit.quarter = Math.min(4, p.quarter); filled.push("quarter"); }
+// Map the parsed bug onto the situation.
+//
+// Split into a PURE derivation plus a tiny applier, because the slot layer needs
+// to know what the scoreboard says WITHOUT mutating anything yet — the filler
+// decides which slots to take and which the user has already answered. The tap
+// path (applyScoreboard) is unchanged in behaviour; it just calls the same
+// derivation everything else uses, so scoreboard reading can never drift between
+// the camera path and the voice path.
+function deriveSituation(p, base) {
+  const cur = base || sit;
+  const out = {}, filled = [];
+  if (Number.isInteger(p.down) && p.down >= 1 && p.down <= 4) { out.down = p.down; filled.push("down"); }
+  if (Number.isInteger(p.distance) && p.distance >= 0) { out.distance = p.distance; filled.push("distance"); }
+  if (Number.isInteger(p.quarter)) { out.quarter = Math.min(4, p.quarter); filled.push("quarter"); }
   if (typeof p.clock === "string" && p.clock) {
-    sit.clock = p.clock;
+    out.clock = p.clock;
     filled.push("clock");
     // Two-minute drill is a real tendency switch — infer it, still user-editable.
     const [m] = p.clock.split(":").map(Number);
-    sit.twoMinute = (p.quarter === 2 || p.quarter === 4) && m < 2;
+    out.twoMinute = (p.quarter === 2 || p.quarter === 4) && m < 2;
   }
   // AUTO-DETECT THE MATCHUP from the two abbreviations the OCR read. If
   // possession is clear it orients offence/defence; if not, both are set and the
@@ -626,37 +808,46 @@ function applyScoreboard(p) {
   const known = (c) => { const t = canonicalTeam(c); return t && teams.includes(t) ? t : null; };
   const a = known(p.homeTeam), b = known(p.awayTeam);
   const poss = known(p.possession);
+  let orientation = "";
   if (a && b && a !== b) {
     if (poss === a || poss === b) {
-      sit.offense = poss; sit.defense = poss === a ? b : a;
-      teamsAutoSet = "possession";
+      out.offense = poss; out.defense = poss === a ? b : a;
+      orientation = "possession";
     } else {
-      sit.offense = a; sit.defense = b;   // orientation unknown → offer the swap
-      teamsAutoSet = "unsure";
+      out.offense = a; out.defense = b;   // orientation unknown -> offer the swap
+      orientation = "unsure";
     }
     filled.push("offense", "defense");
-  } else if (poss && !sit.offense) {
-    sit.offense = poss; teamsAutoSet = "possession"; filled.push("offense");
+  } else if (poss && !cur.offense) {
+    out.offense = poss; orientation = "possession"; filled.push("offense");
   }
-  // Scores → margin from the offense's point of view (needs to know who has it).
+  // Scores -> margin from the offense's point of view (needs to know who has it).
+  const offenseNow = out.offense || cur.offense;
   const pairs = [[known(p.homeTeam), p.homeScore], [known(p.awayTeam), p.awayScore]]
-    .filter(([t, s]) => t && Number.isInteger(s));
-  if (pairs.length === 2 && sit.offense) {
-    const mine = pairs.find(([t]) => t === sit.offense);
-    const theirs = pairs.find(([t]) => t !== sit.offense);
-    if (mine && theirs) { sit.margin = mine[1] - theirs[1]; filled.push("score"); }
+    .filter(([t, sc]) => t && Number.isInteger(sc));
+  if (pairs.length === 2 && offenseNow) {
+    const mine = pairs.find(([t]) => t === offenseNow);
+    const theirs = pairs.find(([t]) => t !== offenseNow);
+    if (mine && theirs) { out.margin = mine[1] - theirs[1]; filled.push("score"); }
   }
-  // "PHI 35" → a field zone, but only if we know whose side that is.
-  if (typeof p.yardLine === "string" && sit.offense) {
+  // "PHI 35" -> a field zone, but only if we know whose side that is.
+  if (typeof p.yardLine === "string" && offenseNow) {
     const m = p.yardLine.match(/^([A-Z]{2,3})\s*(\d{1,2})$/);
     if (m) {
-      const yardsToOpp = m[1] === sit.offense ? 100 - parseInt(m[2], 10) : parseInt(m[2], 10);
-      sit.zone = yardsToOpp <= 5 ? "goal-line" : yardsToOpp <= 20 ? "red-zone"
+      const yardsToOpp = m[1] === offenseNow ? 100 - parseInt(m[2], 10) : parseInt(m[2], 10);
+      out.zone = yardsToOpp <= 5 ? "goal-line" : yardsToOpp <= 20 ? "red-zone"
         : yardsToOpp <= 40 ? "plus-territory" : yardsToOpp <= 59 ? "midfield"
         : yardsToOpp <= 89 ? "own-territory" : "backed-up";
       filled.push("field");
     }
   }
+  return { fields: out, filled, orientation };
+}
+
+function applyScoreboard(p) {
+  const { fields, filled, orientation } = deriveSituation(p, sit);
+  Object.assign(sit, fields);
+  if (orientation) teamsAutoSet = orientation;
   if (filled.length) persist();
   return filled;
 }

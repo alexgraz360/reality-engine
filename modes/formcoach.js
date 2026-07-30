@@ -20,6 +20,8 @@
 // with MoveNet Lightning vendored locally. No CDN, and no network at all for
 // pose — frames never leave the phone.
 
+import { manualPanelHTML, wireManualPanel, voiceFirstHint } from "../services/manualPanel.js";
+
 const MIN_KP_SCORE = 0.35;       // a keypoint below this is not trusted
 const NEEDED_PARTS = ["left_shoulder", "right_shoulder", "left_hip", "right_hip",
   "left_knee", "right_knee", "left_ankle", "right_ankle"];
@@ -478,7 +480,9 @@ function renderShell() {
             <div style="font-size:11px; color:var(--dim);">One thing at a time — and it stops mentioning it once you've got it.</div>
           </div>
         </div>
-        <div data-el="movePicker" style="display:flex; gap:8px; margin-bottom:10px;"></div>
+        ${voiceFirstHint(["coach my shot", "watch my squat"])}
+        ${manualPanelHTML({ key: "move", label: "Set manually",
+          inner: `<div data-el="movePicker" style="display:flex; gap:8px;"></div>` })}
         <div style="position:relative; border-radius:14px; overflow:hidden; background:#000;">
           <video data-el="cam" playsinline muted autoplay
             style="display:none; width:100%; height:38vh; max-height:380px; object-fit:cover;"></video>
@@ -502,6 +506,7 @@ function renderShell() {
     </div>`;
   for (const el of root.querySelectorAll("[data-el]")) els[el.dataset.el] = el;
   els.camBtn.addEventListener("click", () => (running ? stopCamera() : startCamera()));
+  wireManualPanel(els, { key: "move" });
   renderPicker();
   render();
 }
@@ -565,9 +570,50 @@ export default {
     return null;
   },
 
+  // ---------------------------------------------------------------- slots
+  // "Coach my shot" already says basketball. The only thing this mode needs is
+  // the movement, and the movement is almost always in the sentence — so this
+  // should essentially never ask.
+  //
+  // NOTE the pain gate is NOT a slot and must never become one: it is a refusal,
+  // not a value to collect, and it still runs first in handleCommand.
+  describeSlots() {
+    const matchMovement = (t) => {
+      const s = " " + String(t || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ") + " ";
+      for (const mv of movements) {
+        // Each movement's own verb and title, plus the words people actually use.
+        const words = [mv.verb, mv.title, mv.id.replace(/-/g, " ")].filter(Boolean).map((x) => x.toLowerCase());
+        if (mv.id === "basketball-shot") words.push("shot", "shooting", "jumper", "jump shot", "free throw", "basketball");
+        if (mv.id === "bodyweight-squat") words.push("squat", "squats", "squatting", "air squat");
+        for (const w of words) if (s.includes(" " + w + " ")) return mv.id;
+      }
+      return null;
+    };
+    return [{
+      id: "movement", label: "the movement", required: true,
+      sources: ["utterance", "context"],
+      ask: "Shot or squat?",
+      parse: matchMovement,
+      // Last one coached, so "watch my form" alone continues where you left off.
+      fromContext: () => (movement ? movement.id : (store && store.get("lastMovement")) || null),
+      current: () => null,
+      apply: (id) => {
+        const mv = movements.find((m) => m.id === id);
+        if (!mv) return;
+        movement = mv; repCount = 0; activeCueId = null; lastCue = null; lastPraise = "";
+        if (store) store.set("lastMovement", id);
+        renderPicker(); render();
+      },
+      say: (id) => {
+        const mv = movements.find((m) => m.id === id);
+        return mv ? `your ${mv.verb}` : "that movement";
+      },
+    }];
+  },
+
   describeCapabilities() {
     return [{
-      id: "form.coach", label: "Form Coach", needsMode: true,
+      id: "form.coach", label: "Form Coach", needsMode: true, fillsSlots: true,
       patterns: [/\b(coach|watch|check|film) my (shot|shooting|squat|form)\b/i,
                  /\bhow('?s| is) my (shot|squat|form)\b/i],
       examples: ["coach my shot", "watch my squat", "check my form"],

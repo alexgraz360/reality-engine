@@ -19,6 +19,8 @@
 // So: a trustworthy heading turns the arrow on; an untrustworthy one turns it
 // OFF and we fall back to words ("north-east, 120 m") plus the reason.
 
+import { manualPanelHTML, wireManualPanel, voiceFirstHint } from "../services/manualPanel.js";
+
 const R_EARTH_M = 6371008.8;          // IUGG mean Earth radius
 const MAX_PINS = 50;
 const STALE_FIX_MS = 60_000;          // a fix older than this stops being "live"
@@ -173,9 +175,18 @@ function stopTracking() {
 function persist() { store.set("pins", pins); }
 function selected() { return pins.find((p) => p.id === selectedId) || null; }
 
+// A name resolved from speech by the slot layer, consumed by the next drop.
+let pendingLabel = "";
+function tidyLabel(s) {
+  const t = String(s || "").trim().replace(/\s+/g, " ").replace(/[.,!?]+$/, "");
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : "";
+}
+
 function dropPin(label) {
   if (!pos) return "No location fix yet — wait for GPS before dropping a pin.";
-  const name = String(label || "").trim() || defaultLabel();
+  // An explicit argument wins; otherwise use whatever the utterance named.
+  const name = String(label || "").trim() || pendingLabel || defaultLabel();
+  pendingLabel = "";
   const pin = { id: "p" + Date.now().toString(36), label: name.slice(0, 40),
     lat: pos.lat, lon: pos.lon, accuracy: pos.accuracy, ts: Date.now() };
   pins.unshift(pin);
@@ -383,10 +394,12 @@ function renderShell() {
           </div>
         </div>
 
-        <div style="display:flex; gap:8px;">
-          <button class="ghostBtn accent" data-el="trackBtn" style="flex:1; padding:11px;">▶ Start tracking</button>
-          <button class="bigBtn" data-el="dropBtn" style="flex:1; padding:11px;">📍 Drop a pin here</button>
-        </div>
+        ${voiceFirstHint(["drop a pin, call it car", "where's my car"])}
+        ${manualPanelHTML({ key: "nav", label: "Set manually", inner: `
+          <div style="display:flex; gap:8px;">
+            <button class="ghostBtn accent" data-el="trackBtn" style="flex:1; padding:11px;">▶ Start tracking</button>
+            <button class="bigBtn" data-el="dropBtn" style="flex:1; padding:11px;">📍 Drop a pin here</button>
+          </div>` })}
 
         <div data-el="pointer" style="border:1px solid var(--line); border-radius:16px; background:var(--panel-solid);
           padding:18px 14px; margin-top:10px; min-height:120px; display:flex; align-items:center; justify-content:center;"></div>
@@ -413,6 +426,7 @@ function renderShell() {
       </div>
     </div>`;
   for (const el of root.querySelectorAll("[data-el]")) els[el.dataset.el] = el;
+  wireManualPanel(els, { key: "nav" });
   els.trackBtn.addEventListener("click", () => (tracking ? stopTracking() : startTracking()));
   els.dropBtn.addEventListener("click", () => {
     const label = prompt("Name this pin:", defaultLabel());
@@ -465,9 +479,40 @@ export default {
     return null;
   },
 
+  // ---------------------------------------------------------------- slots
+  // "Drop a pin, call it car" already names the pin. The label is OPTIONAL on
+  // purpose: dropping a pin is time-sensitive (you're walking away from the car),
+  // so an unnamed pin gets a sensible default and says which one it used rather
+  // than blocking the save behind a question.
+  //
+  // `pendingLabel` is what dropPin() consumes on the next drop — filling a slot
+  // must not itself create a pin, because that would bypass the mode's own flow.
+  describeSlots() {
+    return [{
+      id: "pinLabel", label: "the pin name", required: false,
+      sources: ["utterance", "context"],
+      parse: (t) => {
+        const s = String(t || "").trim();
+        // "call it the car" / "name it hotel" / "drop a pin for my tent"
+        const m = s.match(/\b(?:call it|name it|label it|called|named|call this)\s+(?:the\s+|my\s+)?([\w' -]{1,40})/i)
+          || s.match(/\bdrop a pin\s+(?:for|at|called|named)\s+(?:the\s+|my\s+)?([\w' -]{1,40})/i)
+          || s.match(/\b(?:mark|save) (?:this as|it as)\s+(?:the\s+|my\s+)?([\w' -]{1,40})/i);
+        if (m) return tidyLabel(m[1]);
+        // "remember where I parked" means the car, and people say it constantly.
+        if (/\bwhere i parked\b|\bmy car\b/i.test(s)) return "Car";
+        return null;
+      },
+      fromContext: () => null,
+      current: () => pendingLabel || null,
+      default: null,          // no default: dropPin() already picks a good one
+      apply: (v) => { pendingLabel = v; },
+      say: (v) => `calling it ${v}`,
+    }];
+  },
+
   describeCapabilities() {
     return [
-      { id: "nav.drop", label: "Navigator", needsMode: true, sideEffect: true,
+      { id: "nav.drop", label: "Navigator", needsMode: true, sideEffect: true, fillsSlots: true,
         patterns: [/\bdrop a pin\b/i, /\bmark this spot\b/i, /\bremember where i parked\b/i],
         examples: ["drop a pin here", "mark this spot", "remember where I parked"],
         run: (text, ctx) => (ctx.callActiveCommand ? ctx.callActiveCommand(text) : null) },

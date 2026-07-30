@@ -48,6 +48,13 @@ export default {
                                   // without the mode being open. Additive; modes
                                   // without it are simply never routed to.
 
+  // ---- OPTIONAL: declare what this mode needs to KNOW before it can act ----
+  describeSlots() {},             // return an array of slots (below). The shell fills
+                                  // them from the utterance, then the camera, then
+                                  // context, and only then asks — one short spoken
+                                  // question at a time. Additive; modes without it
+                                  // behave exactly as before.
+
   // ---- OPTIONAL: a glanceable card for a heads-up display ----
   getGlanceCard() {},             // return a GlanceCard (below) representing the mode's
                                   // current state, or null. The shell pulls this while the
@@ -279,6 +286,86 @@ the regression bar. Side-effectful routes still pass through the **same
 confirmation gate**; the router changes how a request arrives, never whether
 it's confirmed. If two readings are close and either writes something, the
 router **asks one short question** instead of guessing.
+
+## `describeSlots()` — voice & vision first, forms as fallback
+
+Modes used to gate their value behind a phone-shaped form: Football wanted the
+down, the distance, the field zone and both teams before it would say anything.
+**On glasses that is useless** — you'd have to pull out your phone before the
+glasses could help you. So a mode stops demanding input and instead **declares
+what it needs to know**; [`services/slots.js`](services/slots.js) resolves it.
+
+```js
+describeSlots() {
+  return [{
+    id: 'down',                        // unique within the mode
+    label: 'the down',                 // human; used in spoken lines
+    required: true,                    // false → never blocks (see below)
+    sources: ['utterance','vision','context'],  // ORDERED — tried in this order
+    visionSource: 'scoreboard',        // 'scoreboard' | 'ocr' | 'look'
+    ask: 'What down is it?',           // SHORT — this gets spoken aloud
+    parse: (spoken) => value | null,   // parses the utterance AND a spoken answer
+    fromVision: (payload) => value | null,
+    fromContext: () => value | null,   // last used / session
+    default: 1,                        // last resort, stated aloud
+    current: () => value | null,       // already known? then skip entirely
+    apply: (value) => { ... },         // write it into the mode
+    say: (value) => '1st down',        // how it's stated when assumed
+  }];
+}
+```
+
+Only `id` and `apply` are truly required. A slot with no `ask` never asks.
+
+### The resolution order IS the design
+
+1. **The utterance.** "Guide me through fixing the sink" already contains the
+   pack; "coach my shot" the movement; "translate this into Spanish" the
+   language. Free, instant, and most likely right — the user just said it.
+2. **Vision.** If the mode names a `visionSource`, **look before asking**. The
+   football scoreboard and the baseball graphic already carry the teams, the
+   down, the distance and the count.
+3. **Context.** Last used, current session, a sensible default.
+4. **Ask** — last resort, one short spoken question at a time, spoken answer
+   accepted. Never a form.
+
+**Never ask for anything it could infer.** With a readable scoreboard the mode
+must not ask the down. This is enforced structurally, not by policy: the resolver
+*cannot* reach its ask pass before vision has had its turn, so a mode can't get
+this wrong by writing its slots in the wrong order.
+
+`parse` does double duty on purpose — the thing that understands "into Spanish"
+inside a sentence is the same thing that understands "Spanish" as an answer to
+"into what language?". One parser, two jobs, no drift.
+
+### Rules the filler enforces for you
+
+- **One vision read per source.** Several slots usually declare the *same*
+  source; the payload is fetched once and shared. Football does not take four
+  photographs to answer one question.
+- **Optional slots never block.** An unresolved optional slot takes its default
+  and the assumption is **stated aloud** in one line ("Assuming first and ten").
+- **Corrections are surgical.** `slots.correct()` re-fills **one** slot and
+  continues — "no, the Chiefs are on offense" doesn't restart the flow or lose
+  the four things already established. A slot only changes when its own parser
+  claims the sentence *and* the value actually differs.
+- **Gates are untouched.** Filling a slot by voice never bypasses a confirmation
+  gate; a voice-filled side-effectful action still gates exactly as before.
+- **Router precedence is untouched.** Slot filling happens *before* a capability
+  runs; it changes what is known, never which capability wins.
+
+### Opting in
+
+Add `fillsSlots: true` to a capability in `describeCapabilities()`. The shell
+fills that mode's slots before the capability runs. **That is the entire
+integration** — a new mode declares slots and sets one flag, and never touches
+the filler, exactly like the capability registry.
+
+### Forms are the fallback, not the entry point
+
+Every mode keeps its manual panel, but **collapsed and secondary** behind a
+`▸ Set manually` expander. Typing must keep working everywhere — loud rooms,
+privacy, and precision are all real.
 
 ## Reference implementation
 

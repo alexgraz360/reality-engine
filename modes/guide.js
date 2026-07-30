@@ -148,13 +148,61 @@ export default {
   // picker rather than fighting over one capability id.
   describeCapabilities() {
     return [{
-      id: "guide.cook", label: "Guide", needsMode: true,
+      id: "guide.cook", label: "Guide", needsMode: true, fillsSlots: true,
       patterns: [/\bguide me through (?!fixing|repairing|replacing|unclogging|unblocking|assembling|installing|fitting|mending)/i,
                  /\bguide me to make\b/i,
                  /\b(walk|talk) me through (making|cooking)\b/i,
                  /\bhelp me (cook|make)\b/i],
       examples: ["guide me through making pasta", "walk me through cooking chicken", "help me cook rice"],
       run: (text, ctx) => (ctx.callActiveCommand ? ctx.callActiveCommand(text) : null),
+    }];
+  },
+
+  // ---------------------------------------------------------------- slots
+  // "Guide me through fixing the sink" already names the job — the picker was
+  // never needed for that sentence, it was just the only way in.
+  //
+  // The pack slot is REQUIRED but declares no `ask`, because Guide already has
+  // something better than a question: the voice TRIAGE, which narrows by asking
+  // about symptoms rather than making you know the pack's name. So an unresolved
+  // pack falls to triage (below) instead of "which recipe?".
+  //
+  // THE HAZARD GATE IS NOT A SLOT and must not become one. It runs inside
+  // draftRecipe/draftRepair before any model call, and a slot resolving a pack
+  // name can never reach a gas or mains job because those aren't in the packs.
+  describeSlots() {
+    // Match on the DISTINCTIVE nouns in a pack's title, not the whole title.
+    // "Guide me through fixing the sink" shares exactly one word with "Unclog a
+    // slow sink", and an earlier version that demanded two silently fell through
+    // to AI-drafting a procedure when a vendored, verified pack was sitting right
+    // there. Verbs like "fix" are stripped because every pack is a fix.
+    const STOPW = new Set(["fix", "fixing", "a", "an", "the", "or", "and", "slow", "how", "to",
+      "guide", "me", "through", "with", "my", "your", "help", "walk", "talk", "make", "making",
+      "cook", "cooking", "assemble", "unclog", "repair", "mend", "pan", "soft", "crispy"]);
+    const matchPack = (t) => {
+      const s = " " + String(t || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ") + " ";
+      let best = null, bestScore = 0;
+      for (const p of recipes) {
+        const words = [
+          ...String(p.title).toLowerCase().split(/[^a-z0-9]+/),
+          ...(p.keywords || []).map((x) => String(x).toLowerCase()),
+        ].filter((w) => w.length >= 3 && !STOPW.has(w));
+        // Score by how much of the pack's identity the sentence actually names:
+        // longer, rarer words count for more than short common ones.
+        let score = 0;
+        for (const w of new Set(words)) if (s.includes(" " + w + " ")) score += w.length;
+        if (score > bestScore) { best = p.id; bestScore = score; }
+      }
+      return bestScore >= 3 ? best : null;
+    };
+    return [{
+      id: "pack", label: "to know what you're working on", required: true,
+      sources: ["utterance", "context"],
+      parse: matchPack,
+      fromContext: () => (recipe ? recipe.id : null),
+      current: () => (recipe ? recipe.id : null),
+      apply: (id) => { const r = recipes.find((x) => x.id === id); if (r) selectRecipe(r, false); },
+      say: (id) => { const r = recipes.find((x) => x.id === id); return r ? r.title : "that one"; },
     }];
   },
 
@@ -289,8 +337,8 @@ function renderPicker() {
       <h2 style="font-size:20px; margin:2px 2px 4px;">${repairMode ? "🔧 What are we fixing?" : "🍳 What are we making?"}</h2>
       <div style="color:var(--dim); font-size:12.5px; line-height:1.5; margin:0 2px 14px;">
         ${repairMode
-          ? "Pick a job, then work hands-free: open ✦ and say “next”, “repeat”, “start the timer”, or “how does this look?”. Safety prep comes first."
-          : "Pick a recipe, then cook hands-free: open ✦ and just say “next”, “repeat”, “start the timer”, or “how does this look?”."}
+          ? "Say what's broken — <b style=\"color:var(--fg)\">“guide me through fixing the sink”</b> — and it starts there. Not sure? Say <b style=\"color:var(--fg)\">“what's wrong”</b> and it'll narrow it down by asking. Safety prep comes first either way."
+          : "Say what you're making — <b style=\"color:var(--fg)\">“guide me through making pasta”</b> — and it starts there. Then work hands-free: “next”, “repeat”, “start the timer”, “how does this look?”."}
       </div>
       ${repairMode ? `
       <button class="card" data-el="triageBtn" style="min-height:0; width:100%; margin-bottom:10px;">

@@ -54,6 +54,31 @@ export default {
   family: "Learn",
   permissions: ["camera", "motion", "orientation", "geolocation"],
 
+  // Voice entry. No slots: the sky is determined by where and when you are, not by
+  // anything you'd be asked. Once open, the companion already answers "what am I
+  // looking at?" grounded in this mode's getContext(), so the hands-free path is
+  // open-then-ask rather than a form.
+  describeCapabilities() {
+    return [{
+      id: "astro.open", label: "Astronomy", needsMode: true,
+      patterns: [/\b(open|start|show me) (the )?(astronomy|sky|star map|planetarium)\b/i,
+                 /\bwhat('?s| is) (up )?in the sky( tonight)?\b/i,
+                 /\bwhat (star|planet) (is|am i looking at)\b/i],
+      examples: ["open astronomy", "what's in the sky tonight", "what planet is that"],
+      // Declines anything it can't own so the question still reaches the
+      // companion with the sky context attached.
+      run: (text, ctx) => (ctx.callActiveCommand ? ctx.callActiveCommand(text) : null),
+    }];
+  },
+
+  handleCommand(text) {
+    const q = String(text || "").toLowerCase().replace(/[.,!?]/g, "").trim();
+    if (/\b(open|start|show me) (the )?(astronomy|sky|star map|planetarium)\b/.test(q)) {
+      return "Sky's up — point the phone at what you're looking at, and ask me about it.";
+    }
+    return null;   // everything else: the companion answers, grounded by getContext()
+  },
+
   async init(ctx) {
     root = ctx.root;
     lastCtx = null;

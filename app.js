@@ -14,6 +14,7 @@ import knowledge from "./services/knowledge.js";
 import glasses from "./services/glasses.js";
 import router from "./services/router.js";
 import { SAMPLE_CARDS, coveredModes } from "./services/sampleCards.js";
+import slotFiller from "./services/slots.js";
 
 // ---------------------------------------------------------------- mode registry
 // USABLE modes only — every entry here renders an "Open" card under its family.
@@ -289,6 +290,47 @@ document.getElementById("ggPrev").addEventListener("click", () => { stopGalleryA
 document.getElementById("ggPlay").addEventListener("click", () => {
   if (galleryTimer) stopGalleryAuto(); else startGalleryAuto();
 });
+
+// Verification hook for the slot layer. The pane has no mic and no camera, so the
+// scripts inject `listen` and `vision` HERE — at the shell boundary — while the
+// real filler, the real resolution order and every mode's real parsers run
+// untouched. `spoken` records every line the user would have heard.
+window.RE_slots = {
+  filler: slotFiller,
+  declared: () => (active && active.mod && typeof active.mod.describeSlots === "function"
+    ? slotFiller.summarize(active.mod.describeSlots()) : null),
+  last: () => lastSlotResult,
+  // Run a hands-free script: utterance in, plus scripted answers and vision reads.
+  async script({ utterance, answers = [], vision = {}, canAsk = true } = {}) {
+    const spoken = [];
+    const queue = answers.slice();
+    slotOverride = {
+      canAsk,
+      speak: async (t) => { spoken.push(String(t)); return true; },
+      listen: async () => (queue.length ? String(queue.shift()) : ""),
+      vision: async (source) => (source in vision ? vision[source] : null),
+    };
+    try {
+      const res = await fillSlotsFor(active && active.mod, utterance);
+      return { ...(res || {}), spoken, answersLeft: queue.length };
+    } finally { slotOverride = null; }
+  },
+  async correction(utterance) {
+    const spoken = [];
+    slotOverride = { canAsk: false, speak: async (t) => { spoken.push(String(t)); return true; } };
+    try {
+      const res = await correctSlotFor(active && active.mod, utterance);
+      return { ...(res || {}), spoken, treatedAsCorrection: looksLikeCorrection(utterance) };
+    } finally { slotOverride = null; }
+  },
+  // Drive the real command path (mode handleCommand → router → companion) the way
+  // a spoken sentence would, so a script can be end-to-end rather than slot-only.
+  say: async (text) => {
+    document.getElementById("companionQuestion").value = String(text);
+    await askCompanion();
+    return true;
+  },
+};
 
 // Verification hook: the gallery's state without driving the DOM.
 window.RE_gallery = {
@@ -1270,6 +1312,19 @@ function wireRecognition(rec) {
     listening = false;
     micBtn.classList.remove("listening");
     if (uiStatus === "listening") setStatus("idle");
+    // SLOT CAPTURE: this listen was started to answer one spoken question from
+    // the slot filler. Its transcript belongs to that question, so it must NOT
+    // fall through to askCompanion — otherwise answering "Spanish" would be sent
+    // to the model as a new question.
+    if (slotMode) {
+      const heard = (finalTranscript || input.value || "").trim();
+      finalTranscript = ""; discardDictation = false;
+      const resolve = slotResolve;
+      slotMode = false; slotResolve = null;
+      input.value = "";
+      if (resolve) resolve(heard);
+      return;
+    }
     // In wake mode the cycle simply restarts (or stops on inactivity); nothing
     // heard before a trigger is ever sent anywhere.
     if (wakeMode) { finalTranscript = ""; discardDictation = false; onWakeCycleEnd(); return; }
@@ -1313,6 +1368,169 @@ function stopDictation(discard = false) {
 }
 
 let recStartCount = 0; // verification hook: how many times rec.start() actually ran
+
+// ---------------------------------------------------------------- slot voice I/O
+// The slot filler needs two things this shell already owns: say one short line and
+// wait for it to finish, then capture exactly ONE spoken reply. Both reuse the
+// existing single recognizer and the existing speak path — no second recognizer,
+// and the mic/TTS never-overlap rule still holds because we only start listening
+// from speech's onDone.
+let slotMode = false;          // this listen answers a slot question
+let slotResolve = null;        // its resolver
+const SLOT_LISTEN_TIMEOUT_MS = 12_000;
+
+function speakAndWait(text) {
+  return new Promise((resolve) => {
+    const line = String(text || "").trim();
+    if (!line) return resolve(false);
+    transcriptNote(line);                       // visible as well as spoken
+    const willSpeak = speakReply(line, () => { setStatus("idle"); resolve(true); });
+    if (willSpeak) { setStatus("speaking"); return; }
+    // Speech muted or unsupported: the question is still on screen, so typing
+    // remains a complete path. Don't hang waiting for a voice that won't come.
+    resolve(false);
+  });
+}
+
+function listenOnce() {
+  return new Promise((resolve) => {
+    if (!SR || micDenied || listening) return resolve("");
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; resolve(v || ""); };
+    slotMode = true;
+    slotResolve = finish;
+    finalTranscript = "";
+    discardDictation = false;
+    try {
+      const rec = getRecognition();
+      recStartCount++;
+      rec.start();
+      listening = true;
+      micBtn.classList.add("listening");
+      setStatus("listening");
+    } catch (err) {
+      slotMode = false; slotResolve = null;
+      return finish("");
+    }
+    // A recognizer that never fires onend must not strand the flow.
+    setTimeout(() => {
+      if (done) return;
+      slotMode = false; slotResolve = null;
+      try { if (listening) recognition.abort(); } catch (e) {}
+      finish("");
+    }, SLOT_LISTEN_TIMEOUT_MS);
+  });
+}
+
+// ---------------------------------------------------------------- slot vision
+// "Look before asking" needs a frame WITHOUT a tap. Prefer the mode's own live
+// video (Football's Watch view, Guide's camera); otherwise open the environment
+// camera briefly, take one frame, and release it immediately. The photo picker is
+// deliberately NOT used here — it requires a tap, which is the thing we're
+// removing.
+async function captureFrameForSlots() {
+  const live = findLiveVideo();
+  if (live) return frameToJpegBase64(live, live.videoWidth, live.videoHeight);
+  let stream = null;
+  try {
+    stream = await sensors.requestCamera({
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false,
+    });
+    const v = document.createElement("video");
+    v.playsInline = true; v.muted = true; v.srcObject = stream;
+    await v.play();
+    // readyState >= 2 or the first frames encode as a blank image and the model
+    // confidently describes nothing (the Football watch bug, learned once).
+    for (let i = 0; i < 25 && (v.readyState < 2 || !v.videoWidth); i++) {
+      await new Promise((r) => setTimeout(r, 80));
+    }
+    if (v.readyState < 2 || !v.videoWidth) return null;
+    return frameToJpegBase64(v, v.videoWidth, v.videoHeight);
+  } catch (err) {
+    console.warn("slots: couldn't open a camera —", err && err.message);
+    return null;
+  } finally {
+    if (stream) sensors.releaseStream(stream);
+  }
+}
+
+// Dispatch a declared visionSource to the path that already exists for it.
+async function slotVision(source, opts = {}) {
+  const b64 = await captureFrameForSlots();
+  if (!b64) return null;
+  if (source === "scoreboard") {
+    const res = await companion.scoreboard(b64, { fast: true, sport: opts.sport || "football" });
+    return res && res.ok ? res : null;
+  }
+  if (source === "ocr") {
+    const res = await companion.ocr(b64);
+    return res && res.ok ? res : null;
+  }
+  if (source === "look") {
+    const res = await companion.vision(b64, opts.prompt || "What is this? Answer in a few words.");
+    return res && res.ok ? res : null;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- slot filling
+// One entry point. A capability declares `fillsSlots: true` and the shell does
+// this before handing the text to the mode — so the FILLER stays out of the modes
+// and the modes stay out of the filler.
+let lastSlotResult = null;
+let slotOverride = null;   // verification hook: inject listen/vision/speak
+
+function slotCtxFor(mod, utterance) {
+  const o = slotOverride || {};
+  return {
+    utterance,
+    canAsk: o.canAsk !== undefined ? o.canAsk : (!!SR && !micDenied),
+    speak: o.speak || speakAndWait,
+    listen: o.listen || listenOnce,
+    vision: o.vision || ((source) => slotVision(source, { sport: mod && mod.id === "baseball" ? "baseball" : "football" })),
+  };
+}
+
+async function fillSlotsFor(mod, utterance) {
+  if (!mod || typeof mod.describeSlots !== "function") return null;
+  let declared = [];
+  try { declared = mod.describeSlots() || []; }
+  catch (err) { console.warn("slots: describeSlots threw —", err && err.message); return null; }
+  if (!declared.length) return null;
+  const res = await slotFiller.fill(declared, slotCtxFor(mod, utterance));
+  lastSlotResult = { mode: mod.id, ...res };
+  // A required slot we genuinely couldn't get: say so once, plainly, and point at
+  // the fallback rather than looping.
+  if (!res.ok && res.missing.length) {
+    // Labels are written as noun phrases that read after "I still need", so this
+    // never prepends an article and produces "the what you're doing".
+    await slotCtxFor(mod, utterance).speak(
+      `I still need ${res.missing.map((m) => m.label).join(" and ")}. Say it, or open “Set manually”.`);
+  }
+  return res;
+}
+
+// A spoken correction re-fills ONE slot and continues. Tried before the mode's
+// own handleCommand so "no, the Chiefs are on offense" lands on the slot rather
+// than being parsed as a fresh command.
+// Deliberately narrow. A correction is either explicitly marked ("no…",
+// "actually…") or is a bare re-statement of a slot value — and the filler itself
+// still refuses to change anything whose value would stay the same. Being narrow
+// here is what stops this from stealing ordinary commands.
+const CORRECTION_RE = /^\s*(no\b|nope\b|not\b|actually\b|wait\b|i said\b|i meant\b|correction\b|change (it|that)\b|make (it|that)\b)/i;
+function looksLikeCorrection(text) {
+  return CORRECTION_RE.test(String(text || ""));
+}
+
+async function correctSlotFor(mod, utterance) {
+  if (!mod || typeof mod.describeSlots !== "function") return null;
+  let declared = [];
+  try { declared = mod.describeSlots() || []; } catch (err) { return null; }
+  if (!declared.length) return null;
+  const res = await slotFiller.correct(declared, utterance, slotCtxFor(mod, utterance));
+  if (res && res.changed) lastSlotResult = { mode: mod.id, correction: res };
+  return res;
+}
 
 // ---------------------------------------------------------------- wake word
 // FOREGROUND ONLY, OFF BY DEFAULT. This runs the SAME single recognizer in a
@@ -1728,7 +1946,7 @@ async function loadModeCapabilities() {
       const mod = (await entry.load()).default;
       if (typeof mod.describeCapabilities !== "function") return;
       for (const cap of mod.describeCapabilities() || []) {
-        router.register({ ...cap, modeId: cap.modeId || entry.id, label: cap.label || entry.title });
+        router.register(withSlotFilling({ ...cap, modeId: cap.modeId || entry.id, label: cap.label || entry.title }));
       }
     } catch (err) {
       console.warn(`router: couldn't read capabilities for "${entry.id}" —`, err && err.message);
@@ -1757,6 +1975,27 @@ function routerCtx() {
       }
       return null;
     },
+    // Voice/vision-first entry: resolve what the mode needs BEFORE it runs, in
+    // the fixed order utterance → vision → context → ask. A capability opts in
+    // with `fillsSlots: true`; the modes never touch the filler and the filler
+    // never learns about a mode.
+    fillSlots: (text) => (active && active.mod ? fillSlotsFor(active.mod, text) : null),
+  };
+}
+
+// Capabilities that declare `fillsSlots` get their slots resolved first. Wrapping
+// here (rather than inside each capability's run) keeps router PRECEDENCE exactly
+// as it was — this changes nothing about which capability wins, only what is known
+// by the time it runs.
+function withSlotFilling(cap) {
+  if (!cap || !cap.fillsSlots) return cap;
+  const inner = cap.run;
+  return {
+    ...cap,
+    run: async (text, ctx) => {
+      if (active && active.mod) await fillSlotsFor(active.mod, text);
+      return inner(text, ctx);
+    },
   };
 }
 
@@ -1771,6 +2010,21 @@ async function askCompanion() {
   stopSpeaking();      // a new question interrupts the previous answer
   primeTTS();          // in case this Ask is the session's first companion gesture
   if (pendingAction) { hideActionConfirm(); transcriptNote("Previous action cancelled."); }
+
+  // SPOKEN CORRECTION, before anything else parses it. "No, the Chiefs are on
+  // offense" must re-fill THAT SLOT ONLY and continue — not restart the flow and
+  // not be read as a fresh command. Only fires when a declared slot's own parser
+  // recognises the text AND the value actually changes, so ordinary commands are
+  // untouched and this can't quietly swallow input.
+  if (active && active.mod && typeof active.mod.describeSlots === "function" && looksLikeCorrection(question)) {
+    const corr = await correctSlotFor(active.mod, question);
+    if (corr && corr.changed) {
+      input.value = "";
+      handleAssistantReply(question, { ok: true, text: corr.text, stats: null }, { fromMode: true });
+      pullActiveGlance();
+      return;
+    }
+  }
 
   // Active-mode command hook: a mode may handle the input itself ("next",
   // "start the timer", "how does this look?") — instant, local, no model

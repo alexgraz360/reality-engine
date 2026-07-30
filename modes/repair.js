@@ -23,7 +23,7 @@ export default {
   // refused rather than started.
   describeCapabilities() {
     return [
-      { id: "guide.fix", label: "Guide", needsMode: true,
+      { id: "guide.fix", label: "Guide", needsMode: true, fillsSlots: true,
         patterns: [/\bguide me through (fixing|repairing|replacing|unclogging|unblocking|assembling|installing|fitting|mending)\b/i,
                    /\b(help|walk) me (through )?(fix|fixing|repair|repairing|assembl|unclog)/i,
                    /\bhow do i (fix|unclog|unblock|replace)\b/i],

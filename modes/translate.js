@@ -14,6 +14,8 @@
 // better on common languages, and never to be relied on for medical/legal/
 // safety-critical wording.
 
+import { manualPanelHTML, wireManualPanel, voiceFirstHint } from "../services/manualPanel.js";
+
 let root, svc, store, els = {};
 let yourLang = "en", theirLang = "es";
 let last = null;              // { dir, original, translation } — feeds the glance card
@@ -250,12 +252,15 @@ function render() {
           </div>
         </div>
 
-        <div class="fbRow" style="margin:6px 0 2px;"><span class="fbSeg" style="align-items:center;">
-          <select data-el="yourSel" title="Your language" style="max-width:40%;">${langOptions(yourLang)}</select>
-          <button class="fbChip" data-el="swapBtn" title="Swap languages">⇄</button>
-          <select data-el="theirSel" title="Their language" style="max-width:40%;">${langOptions(theirLang)}</select>
-        </span></div>
-        <div style="font-size:10px; color:var(--dim); margin:0 2px 10px;">You ↔ them. Languages marked * are less reliable on a local model.</div>
+        ${voiceFirstHint(["translate this into Spanish", "how do I say two coffees in French"])}
+        ${manualPanelHTML({ key: "lang", label: `Set languages manually (${L(yourLang).name} ↔ ${L(theirLang).name})`,
+          inner: `
+          <div class="fbRow" style="margin:0;"><span class="fbSeg" style="align-items:center;">
+            <select data-el="yourSel" title="Your language" style="max-width:40%;">${langOptions(yourLang)}</select>
+            <button class="fbChip" data-el="swapBtn" title="Swap languages">⇄</button>
+            <select data-el="theirSel" title="Their language" style="max-width:40%;">${langOptions(theirLang)}</select>
+          </span></div>
+          <div style="font-size:10px; color:var(--dim); margin:8px 2px 0;">You ↔ them. Languages marked * are less reliable on a local model.</div>` })}
 
         <!-- READ -->
         <div style="border:1px solid var(--line); border-radius:14px; background:var(--panel-solid); padding:12px; margin-bottom:10px;">
@@ -298,6 +303,7 @@ function render() {
       </div>
     </div>`;
   for (const el of root.querySelectorAll("[data-el]")) els[el.dataset.el] = el;
+  wireManualPanel(els, { key: "lang", label: "Set languages manually" });
   wire();
   if (last) showResult(last.original, last.translation, last.dir);
   renderControls();
@@ -338,17 +344,75 @@ export default {
   // What this mode can be asked to do from ANYWHERE (voice intent router).
   // Static data — safe to read without the mode being open. The router owns no
   // knowledge of Translate; it only reads what's declared here.
+  // ---------------------------------------------------------------- slots
+  // "Translate this into Spanish" already says the target. Asking "into what
+  // language?" after being told is the rudeness this layer removes.
+  //
+  // The SOURCE is inferred rather than asked: it is whatever the other language
+  // is in the current pair, which is right nearly always and costs nothing when
+  // it is wrong (you say "no, from French" and one slot re-fills).
+  describeSlots() {
+    const nameOf = (c) => L(c).name;
+    // Plain word matching on a padded string — deliberately NOT a RegExp built
+    // from a template. A language name is user-facing data, and hand-escaping it
+    // into a pattern is how you end up with a "\b" that is a backspace character
+    // instead of a word boundary. Padding with spaces gives the same
+    // whole-word guarantee with nothing to escape.
+    const codeFromText = (t) => {
+      const s = " " + String(t || "").toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ") + " ";
+      // "into spanish" / "in spanish" / "to spanish" — an explicit direction wins.
+      for (const l of LANGS) {
+        const n = l.name.toLowerCase();
+        for (const prep of ["in", "into", "to", "from"]) {
+          if (s.includes(" " + prep + " " + n + " ")) return l.code;
+        }
+      }
+      // Bare mention: "spanish please".
+      for (const l of LANGS) if (s.includes(" " + l.name.toLowerCase() + " ")) return l.code;
+      return null;
+    };
+    return [
+      {
+        id: "target", label: "the language", required: true,
+        sources: ["utterance", "context"],
+        ask: "Into what language?",
+        parse: codeFromText,
+        fromContext: () => theirLang || null,
+        current: () => null,        // the utterance may be changing it, so always re-read
+        default: "es",
+        apply: (v) => { if (v === yourLang) yourLang = theirLang; theirLang = v; persist(); render(); },
+        say: (v) => `into ${nameOf(v)}`,
+      },
+      {
+        id: "source", label: "the language you speak", required: false,
+        sources: ["utterance", "context"],
+        // Only claims the sentence when it explicitly says "from X".
+        parse: (t) => {
+          const m = String(t || "").toLowerCase().match(/\bfrom\s+([a-z]+)\b/);
+          if (!m) return null;
+          const l = LANGS.find((x) => x.name.toLowerCase() === m[1]);
+          return l ? l.code : null;
+        },
+        fromContext: () => yourLang || null,
+        current: () => null,
+        default: "en",
+        apply: (v) => { if (v === theirLang) theirLang = yourLang; yourLang = v; persist(); render(); },
+        say: (v) => `from ${nameOf(v)}`,
+      },
+    ];
+  },
+
   describeCapabilities() {
     return [
       {
-        id: "translate.read", label: "Translate", needsMode: true,
+        id: "translate.read", label: "Translate", needsMode: true, fillsSlots: true,
         patterns: [/\b(what does (this|that) say|read (this|that|the sign|the menu)|translate (this|that|it))\b/i,
                    /\bwhat('?s| is) (this|that) (say|sign|menu)\b/i],
         examples: ["what does this say", "read this sign", "translate this menu"],
         run: () => { startRead(); return "Reading it now…"; },
       },
       {
-        id: "translate.say", label: "Translate a phrase", needsMode: true, sideEffect: false,
+        id: "translate.say", label: "Translate a phrase", needsMode: true, sideEffect: false, fillsSlots: true,
         patterns: [/\bhow do (i|you) say\b/i, /\bsay .+ in (spanish|french|german|italian|portuguese|japanese|chinese|korean|russian|arabic|hindi|dutch)\b/i],
         examples: ["how do I say where is the station", "say two coffees in spanish"],
         run: (text) => {

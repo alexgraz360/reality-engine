@@ -96,6 +96,34 @@ export default {
   family: "Learn",
   permissions: ["camera"],
 
+  // Voice entry so this mode can be reached and STARTED without a tap. It has no
+  // slots — there is nothing to know before it runs, you just throw something —
+  // but without a capability it was unreachable by speech at all, which fails the
+  // hands-free bar for a reason that had nothing to do with the mode itself.
+  describeCapabilities() {
+    return [{
+      id: "projectile.track", label: "Projectile", needsMode: true,
+      patterns: [/\b(track|measure|time) my (throw|pitch|kick|ball)\b/i,
+                 /\bhow (fast|far) did i throw\b/i,
+                 /\b(start|open) (the )?projectile\b/i],
+      examples: ["track my throw", "how fast did I throw that", "start projectile"],
+      run: (text, ctx) => (ctx.callActiveCommand ? ctx.callActiveCommand(text) : null),
+    }];
+  },
+
+  handleCommand(text) {
+    const q = String(text || "").toLowerCase().replace(/[.,!?]/g, "").trim();
+    if (/\b(track|measure|time) my (throw|pitch|kick|ball)\b|\bstart (the )?(camera|tracking|projectile)\b/.test(q)) {
+      if (els.startBtn && !els.startBtn.disabled) {
+        onStartClick();
+        return "Camera on — throw when you're ready and I'll track it.";
+      }
+      return "Already tracking — throw when you're ready.";
+    }
+    if (/^(reset|clear|again|another (one|throw))$/.test(q)) { resetThrow(); return "Reset — ready for the next throw."; }
+    return null;
+  },
+
   async init(ctx) {
     root = ctx.root;
     svc = ctx.services;

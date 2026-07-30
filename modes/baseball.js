@@ -648,12 +648,89 @@ export default {
   describeCapabilities() {
     return [{
       id: "baseball.count", label: "Baseball", needsMode: true,
+      // Pitcher, batter and count come off the graphic before anything is asked.
+      fillsSlots: true,
       patterns: [/\b(full count|\d\s*(?:-|and)\s*\d\s+count)\b/i,
                  /\bwhat('?s| is) (he|the pitcher) (throwing|going to throw)\b/i,
                  /\bread (the )?pitch\b/i],
       examples: ["full count", "1-2 count", "what's he throwing", "read the pitch"],
       run: (text, ctx) => (ctx.callActiveCommand ? ctx.callActiveCommand(text) : null),
     }];
+  },
+
+  // ---------------------------------------------------------------- slots
+  // The broadcast graphic already shows the pitcher, the batter and the count, so
+  // vision runs before any question here too. Only the pitcher and batter can ask
+  // — the count is never worth a question when a camera can read it, and if the
+  // graphic is unreadable an assumed 0-0 is honest and audible.
+  describeSlots() {
+    const fromGraphic = (payload, key) => {
+      if (!payload || !payload.parsed) return null;
+      const p = payload.parsed;
+      if (key === "balls") return Number.isInteger(p.balls) ? Math.min(3, p.balls) : null;
+      if (key === "strikes") return Number.isInteger(p.strikes) ? Math.min(2, p.strikes) : null;
+      if (key === "pitcher") { const m = matchPlayer(p.pitcher, baseballData.pitchers()); return m ? m.id : null; }
+      if (key === "batter") {
+        // Same fallback the tap path uses: a graphic often puts the batter's
+        // surname outside the parsed fields, so the raw text is fair game.
+        const m = matchPlayer(p.batter || payload.rawText, baseballData.batters());
+        return m ? m.id : null;
+      }
+      return null;
+    };
+    const rosterMatch = (text, roster) => {
+      const m = matchPlayer(text, roster);
+      if (m) return m.id;
+      // Spoken names aren't in caps, so try a plain surname match too.
+      const words = String(text || "").toLowerCase().match(/[a-z]{3,}/g) || [];
+      for (const w of words) {
+        const hits = roster.filter((r) => r.name.split(" ").slice(-1)[0].toLowerCase() === w);
+        if (hits.length === 1) return hits[0].id;
+      }
+      return null;
+    };
+    return [
+      {
+        id: "pitcher", label: "the pitcher", required: true,
+        sources: ["utterance", "vision", "context"], visionSource: "scoreboard",
+        ask: "Who's pitching?",
+        parse: (t) => rosterMatch(t, baseballData.pitchers()),
+        fromVision: (p) => fromGraphic(p, "pitcher"),
+        fromContext: () => sit.pitcherId || null,
+        current: () => sit.pitcherId || null,
+        apply: (v) => { sit.pitcherId = v; persist(); renderPanel(); },
+        say: (v) => { const p = baseballData.getPitcher(v); return p ? `${p.name} pitching` : "that pitcher"; },
+      },
+      {
+        id: "batter", label: "the batter", required: true,
+        sources: ["utterance", "vision", "context"], visionSource: "scoreboard",
+        ask: "Who's batting?",
+        parse: (t) => rosterMatch(t, baseballData.batters()),
+        fromVision: (p) => fromGraphic(p, "batter"),
+        fromContext: () => sit.batterId || null,
+        current: () => sit.batterId || null,
+        apply: (v) => { sit.batterId = v; playersAutoSet = "batter"; persist(); renderPanel(); },
+        say: (v) => { const b = baseballData.getBatter(v); return b ? `${b.name} batting` : "that batter"; },
+      },
+      {
+        id: "count", label: "the count", required: false,
+        sources: ["utterance", "vision"], visionSource: "scoreboard",
+        parse: (t) => {
+          const s = String(t).toLowerCase();
+          if (/\bfull count\b/.test(s)) return { balls: 3, strikes: 2 };
+          const m = s.match(/\b([0-3])\s*(?:-|and|to)\s*([0-2])\b/);
+          return m ? { balls: +m[1], strikes: +m[2] } : null;
+        },
+        fromVision: (p) => {
+          const b = fromGraphic(p, "balls"), s = fromGraphic(p, "strikes");
+          return b === null && s === null ? null : { balls: b === null ? sit.balls : b, strikes: s === null ? sit.strikes : s };
+        },
+        current: () => null,
+        default: { balls: 0, strikes: 0 },
+        apply: (v) => { sit.balls = v.balls; sit.strikes = v.strikes; persist(); renderPanel(); },
+        say: (v) => `${v.balls}-${v.strikes}`,
+      },
+    ];
   },
 
   getContext() { return buildContext(); },
@@ -686,7 +763,9 @@ export default {
       sit.balls = +c[1]; sit.strikes = +c[2]; renderPanel(); refresh();
       const line = instantRead(); showReadCard(line); return line;
     }
-    if (/\bread it\b|\bwhat('| i)?s (he|the) (throwing|pitch)/.test(t)) {
+    // Same fix as Football: the router advertises "read the pitch", so the mode
+    // has to answer it rather than declining its own advertised phrasing.
+    if (/\bread it\b|\bread (the )?pitch\b|\bwhat('| i)?s (he|the) (throwing|pitch)/.test(t)) {
       const line = instantRead(); showReadCard(line); renderFeed(); return line;
     }
     if (/\bfull count\b/.test(t)) {

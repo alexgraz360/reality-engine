@@ -18,6 +18,7 @@ let root, svc, store, els = {};
 let sessions = [];            // persisted: [{id,title,ts,durationMs,status,progress,text,summary,points,memIds,error}]
 let recorder = null, chunks = [], recStream = null;
 let recording = false, recStartAt = 0, tickTimer = 0;
+let pendingTitle = "";   // a name heard in the utterance, used by the next session
 let pollTimers = {};          // sessionId -> interval id
 let consentSeen = false;
 
@@ -114,7 +115,9 @@ async function finishRecording() {
   if (blob.size < 2000) { note("That was too short to transcribe."); render(); return; }
 
   const session = {
-    id: "s" + Date.now().toString(36), title: `Session ${fmtDate(Date.now())}`,
+    // A name resolved from speech ("record this standup") wins over the dated
+    // default; it's consumed here so it can't leak into the next recording.
+    id: "s" + Date.now().toString(36), title: pendingTitle || `Session ${fmtDate(Date.now())}`,
     ts: Date.now(), durationMs, status: "uploading", progress: 0,
     text: "", summary: "", points: [], memIds: [], sizeKB: Math.round(blob.size / 1024),
   };
@@ -466,9 +469,37 @@ export default {
   // Voice router: start/stop from anywhere. Asking about what was said is
   // deliberately NOT claimed — the normal recall path already answers it from
   // the memory entries this mode writes.
+  // ---------------------------------------------------------------- slots
+  // One optional slot: what to call this recording. "Record this standup" names
+  // it without a keyboard, and an unnamed session still gets the dated default —
+  // recording must never wait behind a question, because by the time you've
+  // answered, the thing you wanted to capture has been said.
+  //
+  // NOT a slot: consent. The recording gate and the "never ambient, off by
+  // default" rule are untouched — a slot only ever supplies a title.
+  describeSlots() {
+    return [{
+      id: "sessionTitle", label: "a name for this recording", required: false,
+      sources: ["utterance"],
+      parse: (t) => {
+        const s = String(t || "").trim();
+        const m = s.match(/\brecord (?:this|the)\s+([\w' -]{2,40})/i)
+          || s.match(/\b(?:call|name) (?:it|this)\s+([\w' -]{2,40})/i);
+        if (!m) return null;
+        const v = m[1].trim().replace(/\s+/g, " ").replace(/[.,!?]+$/, "");
+        // "record this meeting" is the generic phrasing, not a name.
+        return /^(meeting|call|class|thing|it|session)$/i.test(v) ? null : v.charAt(0).toUpperCase() + v.slice(1);
+      },
+      current: () => pendingTitle || null,
+      default: null,             // no default: the dated title is already good
+      apply: (v) => { pendingTitle = v; },
+      say: (v) => `calling it ${v}`,
+    }];
+  },
+
   describeCapabilities() {
     return [
-      { id: "transcribe.start", label: "Transcribe", needsMode: true, sideEffect: true,
+      { id: "transcribe.start", label: "Transcribe", needsMode: true, sideEffect: true, fillsSlots: true,
         patterns: [/\b(start|begin) recording\b/i, /\brecord (this|the) (meeting|class|call)\b/i],
         examples: ["start recording", "record this meeting"],
         run: () => { startRecording(); return "Recording — tap Stop when you're done."; } },

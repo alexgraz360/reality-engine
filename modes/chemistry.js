@@ -525,6 +525,36 @@ export default {
       lines: wrap(last.text.replace(/\s+/g, " "), 24, 4), spoken: last.text, holdMs: 12000 };
   },
 
+  // ---------------------------------------------------------------- slots
+  // Chemistry is already voice-first: the subject is always in the sentence, and
+  // for LOOK it is whatever the camera sees. So there is exactly ONE slot, it is
+  // optional, and it never asks — "what am I looking at?" is answered by looking,
+  // which is what `visionSource: 'look'` means here.
+  //
+  // Deliberately NOT slots: the mixing pair (it is answered from the vendored
+  // table by handleCommand, and a slot question could never be allowed to soften
+  // a "don't mix"), and every refusal gate.
+  describeSlots() {
+    return [{
+      id: "subject", label: "what you're asking about", required: false,
+      sources: ["utterance", "vision"], visionSource: "look",
+      parse: (t) => {
+        const s = String(t || "").trim();
+        // "what's happening to this rust" / "why does iron rust"
+        const m = s.match(/\b(?:why does|why do|what'?s happening (?:to|in|with)|the chemistry of|explain)\s+(?:the\s+|this\s+|a\s+)?([\w' -]{2,40})/i);
+        return m ? m[1].trim().toLowerCase() : null;
+      },
+      fromVision: (p) => {
+        const m = String((p && p.text) || "").match(/MATERIAL:\s*(.+)/i);
+        const v = m ? m[1].trim() : "";
+        return v && !/^unsure/i.test(v) ? v : null;
+      },
+      current: () => (last && last.subject) || null,
+      apply: (v) => { last = { ...(last || { kind: "ask", sources: [] }), subject: v }; },
+      say: (v) => `about ${v}`,
+    }];
+  },
+
   describeCapabilities() {
     return [
       {

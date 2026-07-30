@@ -47,6 +47,35 @@ export default {
   family: "Physics",
   permissions: ["motion"],
 
+  // Voice entry. No slots: the string length is measured by the app, not asked for.
+  //
+  // HONEST LIMIT: on iOS, DeviceMotion permission is GESTURE-GATED by the browser —
+  // requestMotion() must be called from a real tap, and no amount of design here
+  // can change that. So "measure gravity" opens the mode and speaks what to do,
+  // but the very first run on iOS needs one tap on Enable motion. That is a
+  // platform gate, not a form, and it is stated rather than hidden.
+  describeCapabilities() {
+    return [{
+      id: "pendulum.measure", label: "Pendulum", needsMode: true,
+      patterns: [/\bmeasure (gravity|g)\b/i, /\b(start|open) (the )?pendulum\b/i,
+                 /\bwhat('?s| is) g here\b/i],
+      examples: ["measure gravity", "start the pendulum", "what's g here"],
+      run: (text, ctx) => (ctx.callActiveCommand ? ctx.callActiveCommand(text) : null),
+    }];
+  },
+
+  handleCommand(text) {
+    const q = String(text || "").toLowerCase().replace(/[.,!?]/g, "").trim();
+    if (/\bmeasure (gravity|g)\b|\bstart (the )?pendulum\b|\bwhat'?s g here\b/.test(q)) {
+      if (els.enableBtn && !els.enableBtn.disabled && els.enableBtn.offsetParent !== null) {
+        return "Pendulum's open. Tap “Enable motion” once — iOS only grants motion from a tap — " +
+          "then hang the phone on a string and set it swinging.";
+      }
+      return "Motion's on — hang the phone on a string and set it swinging; I'll read the period and work out g.";
+    }
+    return null;
+  },
+
   async init(ctx) {
     root = ctx.root;
     svc = ctx.services;
