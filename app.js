@@ -83,6 +83,30 @@ const REGISTRY = [
     load: () => import("./modes/transcribe.js"),
   },
   {
+    id: "soundlab", title: "Sound Lab · what am I hearing", family: "Learn", icon: "🔊",
+    permissions: ["mic"],
+    blurb: "Find the frequency of anything — the hum in your kitchen, a guitar string, a room's resonance — with the nearest note and how many cents off. Measured on this phone; audio is never recorded or sent anywhere.",
+    load: () => import("./modes/soundlab.js"),
+  },
+  {
+    id: "colorlab", title: "Light & Color · what colour is that", family: "Learn", icon: "🎨",
+    permissions: ["camera"],
+    blurb: "Point at something and get its actual colour — name, hex, RGB, HSL — plus how the light falls across the frame. Try a shadow you'd call grey; it's usually blue.",
+    load: () => import("./modes/colorlab.js"),
+  },
+  {
+    id: "freefall", title: "Free Fall · measure g", family: "Learn", icon: "🍎",
+    permissions: ["motion"],
+    blurb: "Drop the phone and time the weightless moment to work out g. It won't match the textbook — the mode shows the spread across every attempt and explains exactly why, rather than nudging the answer.",
+    load: () => import("./modes/freefall.js"),
+  },
+  {
+    id: "spring", title: "Spring · period & stiffness", family: "Learn", icon: "🌀",
+    permissions: ["motion"],
+    blurb: "Hang the phone on a spring, set it bouncing, and read the spring constant off the period. Then see the surprise: amplitude doesn't change the period at all.",
+    load: () => import("./modes/spring.js"),
+  },
+  {
     id: "pendulum", title: "Pendulum · period & g", family: "Learn", icon: "🪀",
     permissions: ["motion"],
     blurb: "Swing the phone on a string — measures period T from the gyroscope and computes g in real units.",

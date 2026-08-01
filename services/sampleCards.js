@@ -167,6 +167,46 @@ export const SAMPLE_CARDS = [
     },
   },
   {
+    mode: "soundlab", label: "Sound Lab · pitch",
+    card: {
+      // The number leads: the frequency, not "Sound Lab is measuring".
+      title: "440 Hz",
+      lines: ["A4 +1¢", "speech clarity band", "-31 dB rel"],
+      spoken: "440 hertz, A4 plus one cent.",
+      holdMs: 6000,
+    },
+  },
+  {
+    mode: "colorlab", label: "Light & Color · a shadow",
+    card: {
+      // Verified against the real path: #5A6B84 genuinely names as "grey", and
+      // its hue of 216 degrees is what gives the shadow away as blue. The card
+      // says exactly what the mode says, not a nicer version of it.
+      title: "#5A6B84",
+      lines: ["grey — but hue 216°", "RGB 90 107 132", "light: cool"],
+      spoken: "That's a blue-grey, hex 5A6B84. The light looks cool — that shadow is lit by the sky, not the sun.",
+      holdMs: 9000,
+    },
+  },
+  {
+    mode: "freefall", label: "Free Fall · measured g",
+    card: {
+      title: "g ≈ 9.21",
+      lines: ["m/s² · 6 drops", "spread 8.6–9.8", "-6% vs 9.81"],
+      spoken: "g measured 9.21 metres per second squared across six drops, 6 percent below the textbook value.",
+      holdMs: 9000,
+    },
+  },
+  {
+    mode: "spring", label: "Spring · stiffness",
+    card: {
+      title: "k ≈ 18.4 N/m",
+      lines: ["T = 0.655 s", "9 cycles · 0.2 kg", "±0.012 s spread"],
+      spoken: "Period 0.66 seconds, so the spring constant is about 18 newtons per metre.",
+      holdMs: 9000,
+    },
+  },
+  {
     mode: "pendulum", label: "Pendulum · measurement",
     card: {
       title: "🪀 Pendulum",
