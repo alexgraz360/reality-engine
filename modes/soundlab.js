@@ -107,7 +107,8 @@ function analyse() {
   const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
 
   const binHz = audioCtx.sampleRate / FFT_SIZE;
-  // Linear magnitudes for HPS — multiplying dB values would be meaningless.
+  // Linear magnitudes: the subharmonic test compares energy ratios, and ratios of
+  // dB values would be meaningless.
   const mags = new Float32Array(freqData.length);
   for (let i = 0; i < freqData.length; i++) mags[i] = Math.pow(10, freqData[i] / 20);
 
