@@ -19,6 +19,7 @@
 
 import storage from "./storage.js";
 import knowledge from "./knowledge.js";
+import tokens from "./tokens.js";
 
 const SYSTEM_PROMPT =
   "You are the Reality Engine companion — a knowledgeable, concise assistant for astronomy, " +
@@ -52,6 +53,26 @@ const SYSTEM_PROMPT =
   "You cannot control devices or reach anything outside this device.";
 
 const ASK_TIMEOUT_MS = 120_000; // local CPU inference can be slow, esp. the first answer
+
+// ---------------------------------------------------------------- context size
+//
+// The bridge is the only thing that knows what num_ctx it set, so it reports it
+// on /health and every /chat answer, and we cache the last value we were told.
+// Until we've been told, the fallback is used — deliberately the same 8192 the
+// bridge defaults to, and corrected the first time either endpoint answers.
+//
+// This matters more than it looks: a guard hardcoded at 8192 in front of a
+// bridge running 4096 would pass prompts straight through to the truncation it
+// exists to prevent.
+let knownContextTokens = tokens.DEFAULT_CONTEXT_TOKENS;
+let contextTokensSource = "default";
+function noteContextTokens(n, source) {
+  const v = Number(n);
+  if (Number.isFinite(v) && v >= 512 && v <= 1_000_000) {
+    knownContextTokens = v;
+    contextTokensSource = source;
+  }
+}
 
 // Copy/paste (especially on iOS) can smuggle in spaces, newlines, and even invisible
 // characters (zero-width space, BOM, NBSP) that .trim() alone won't remove — any of
@@ -185,6 +206,15 @@ export const companion = {
     return "sent:" + role;
   },
 
+  // ---- context window, for callers that must size their own work ----
+  //
+  // Transcription's map-reduce has to decide how many partial summaries can go
+  // into one reduce prompt, and that decision has to be made BEFORE any request
+  // exists to measure. It asks here rather than hardcoding a number.
+  contextTokens() { return knownContextTokens; },
+  contextTokensSource() { return contextTokensSource; },
+  promptBudget() { return tokens.promptBudget(knownContextTokens); },
+
   // ---- diagnostics (bridge GET /health with the token) ----
   //
   // The bridge is five independent pieces and for a long time any failure showed
@@ -224,6 +254,8 @@ export const companion = {
       this._lastHealthOk = true;
       const ollama = (data.pieces || []).find((p) => p.id === "ollama");
       this._lastWarm = (ollama && ollama.warm) || null;
+      // Learn the real context window from the bridge rather than assuming it.
+      if (ollama) noteContextTokens(ollama.numCtx, "health");
       return { reachable: true, ms, ...data };
     } catch (err) {
       // Nothing answered at all. Say which of the two plausible causes it is
@@ -489,9 +521,23 @@ export const companion = {
     // Knowledge Library: retrieve relevant reference material for this question.
     // Best-effort — returns [] if the bridge is unreachable or nothing scores
     // above the relevance threshold, in which case the model answers unaided.
-    const found = await knowledge.search(prompt, { context, topK: 3 });
+    // MECHANICAL TRANSFORMS DON'T NEED THE LIBRARY. Summarising a chunk of a
+    // meeting transcript is not a question about the user's reference packs, so
+    // retrieving three of them costs an embedding round trip AND roughly two
+    // thousand tokens of the very budget the caller is trying to fit inside.
+    // Verification caught this the expensive way: the transcription fold's
+    // section prompts were being pushed over budget by notes about cooking.
+    const found = opts && opts.noRetrieval
+      ? []
+      : await knowledge.search(prompt, { context, topK: 3 });
     const reference = found.length ? [{
       role: "system",
+      // Tagged so the overflow guard knows this block is droppable — see
+      // tokens.fitMessages. Retrieval is best-effort by design (search() already
+      // returns [] whenever the bridge is slow or down, and the model answers
+      // unaided), so the whole block is one droppable unit rather than being
+      // shaved note by note. The tags are stripped before the request is sent.
+      _reference: true, _noteCount: found.length,
       content:
         "Reference notes from the user's own knowledge library — these are trusted and " +
         "may be more current or specific than your training. Use them when they answer " +
@@ -525,6 +571,33 @@ export const companion = {
       },
     ];
 
+    // ------------------------------------------------------ THE OVERFLOW GUARD
+    //
+    // Every /chat prompt in the app is built here, so this is the one place the
+    // check has to live. Nothing goes out that we haven't sized first.
+    //
+    // Order of business: drop what's droppable (old turns, then the retrieval
+    // block) and SAY SO; if the undroppable core — system prompt, any mode
+    // safety instruction, and the user's actual question — still doesn't fit,
+    // refuse out loud and send nothing. Answering from the back two-thirds of a
+    // prompt is the failure mode this whole pass exists to kill, and it is worse
+    // than no answer because it looks exactly like a good one.
+    const budget = tokens.promptBudget(knownContextTokens);
+    const fitted = tokens.fitMessages(messages, budget);
+    if (!fitted.fits) {
+      console.warn(`companion: prompt over budget — ~${fitted.estimated} est. tokens vs ${budget} usable ` +
+        `of ${knownContextTokens} (${contextTokensSource}); NOT SENT`);
+      return {
+        ok: false, source: "overflow", overflow: true,
+        estimatedTokens: fitted.estimated, budget,
+        text: tokens.overflowMessage(fitted.estimated, budget),
+      };
+    }
+    const notice = tokens.describeDrops(fitted.dropped);
+    if (notice) console.warn("companion: " + notice + ` (~${fitted.estimated}/${budget} tokens)`);
+    // Strip the guard's own tags so the wire format is unchanged.
+    const sendMessages = fitted.messages.map((m) => ({ role: m.role, content: m.content }));
+
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), ASK_TIMEOUT_MS);
     try {
@@ -532,7 +605,7 @@ export const companion = {
         method: "POST",
         headers: { "content-type": "application/json", authorization: "Bearer " + token },
         body: JSON.stringify({
-          messages,
+          messages: sendMessages,
           // Optional hard cap on reply length (the bridge clamps it) — used by
           // short "add colour" calls so they can't ramble on a slow local model.
           ...(Number.isInteger(opts.maxTokens) ? { maxTokens: opts.maxTokens } : {}),
@@ -555,8 +628,29 @@ export const companion = {
       if (!data || typeof data.text !== "string" || !data.text) {
         return { ok: false, source: "error", text: "The bridge returned an empty answer — try again." };
       }
+      // GROUND TRUTH, checked against our own estimate. The bridge reports the
+      // real prompt_eval_count and the real num_ctx; an estimator that drifts
+      // gets caught here rather than believed. If the bridge says the prompt was
+      // truncated, that is stated as an outright warning — a silently shortened
+      // prompt is the exact failure this pass exists to make impossible.
+      noteContextTokens(data.numCtx, "bridge");
+      let overflowNotice = notice;
+      if (data.truncated) {
+        console.error(`companion: BRIDGE REPORTS TRUNCATION — ${data.promptTokens}/${data.numCtx} real tokens ` +
+          `(we estimated ${fitted.estimated} and thought it fit in ${budget})`);
+        overflowNotice = "Heads up: that prompt was longer than the model's window, so the front of it was cut " +
+          "before it was read. Treat this answer as partial.";
+      }
+
       return {
         ok: true, source: "local", text: data.text.trim(), stats: data.stats || null,
+        // Present whenever something was left out — either by us, deliberately
+        // and in a known order, or by the runtime, in which case it's a warning.
+        notice: overflowNotice || null,
+        truncated: Boolean(data.truncated),
+        promptTokens: Number(data.promptTokens) || null,
+        estimatedTokens: fitted.estimated,
+        numCtx: Number(data.numCtx) || knownContextTokens,
         sources: found.map((f) => ({ pack: f.packLabel || f.pack, title: f.title, score: f.score })),
         // Memory honesty: a personal question with NO personal memory retrieved
         // must never be answered from the model's imagination. The caller

@@ -36,7 +36,12 @@ const HAZARD_RULES = [
     why: "household mains wiring" },
   { re: /\b(load[- ]bearing|structural|joist|rafter|lintel|foundation|supporting wall|remove a wall|knock through)\b/i,
     why: "structural work" },
-  { re: /\b(roof|chimney|gutter|ladder|scaffold|working at height|second storey|second story)\b/i,
+  // Plurals were missing here and it was a real hole: "clear the gutters" — the
+  // single most common way anyone phrases this job — was NOT refused, because
+  // `gutter\b` doesn't match "gutters". Found while regression-testing the
+  // existing gate during the automotive pass. Same class of bug as the
+  // automotive OBD and jack-stand misses.
+  { re: /\b(roofs?|chimneys?|gutters?|ladders?|scaffold(ing)?|working at height|second storey|second story)\b/i,
     why: "roof, gutter or ladder work" },
   { re: /\b(asbestos|lead paint|mould remediation|sewage|septic)\b/i,
     why: "hazardous material" },
@@ -80,7 +85,12 @@ function stepsOf(p) {
   p._steps = list;
   return list;
 }
-function isRepair(p) { return !!p && p.domain === "repair"; }
+// "Procedural pack" — tools, parts, safety prep and a required verify step, as
+// opposed to a recipe. Was `domain === "repair"`; widened when automotive
+// arrived so a car job gets the safety-prep gate and the tools/parts card
+// automatically, rather than falling through to the cooking branch and asking
+// a wiper-blade job how many people it serves.
+function isRepair(p) { return !!p && !!p.domain && p.domain !== "cooking"; }
 // `checkCue` is the generic name; `donenessCue` is what the cooking packs use
 // and keeps working untouched.
 function cueOf(s) { return (s && (s.checkCue || s.donenessCue)) || ""; }
@@ -117,6 +127,26 @@ export default {
       triageTree = rep.triage || [];
       triageStops = rep.triageStops || {};
     } catch (e) { console.error("repairs failed to load:", e); }
+    // THIRD DOMAIN (automotive). Purely additive: more packs into the same list
+    // and more nodes into the SAME triage tree, reached by one extra option on
+    // the existing root. The engine gains no new code path — a car noise is
+    // narrowed by startTriage/answerTriage, the identical functions a blocked
+    // sink uses, which is the whole reason Guide was built as an engine.
+    //
+    // Automotive's hazard gate lives in services/autoSafety.js and runs before
+    // any of this; nothing in data/automotive.json needs the car raised.
+    try {
+      const r3 = await fetch(new URL("../data/automotive.json", import.meta.url));
+      const auto = await r3.json();
+      recipes.push(...(auto.packs || []).map((p) => ({ ...p, domain: p.domain || "auto" })));
+      triageTree = triageTree.concat(auto.triage || []);
+      triageStops = { ...triageStops, ...(auto.triageStops || {}) };
+      const root = triageTree.find((n) => n.id === "root");
+      if (root && auto.rootOption && !root.options.some((o) => o.next === auto.rootOption.next)) {
+        // Before "Something else", which is the catch-all and must stay last.
+        root.options.splice(Math.max(0, root.options.length - 1), 0, auto.rootOption);
+      }
+    } catch (e) { console.error("automotive packs failed to load:", e); }
     renderPicker();
   },
 
@@ -139,7 +169,7 @@ export default {
 
   // Lets the Build-family entry open straight into the repair picker. Same
   // module, same engine — just which list you land on.
-  _setDomain(d) { pickerDomain = d === "repair" ? "repair" : "cooking"; },
+  _setDomain(d) { pickerDomain = DOMAINS[d] ? d : "cooking"; },
 
   // Voice intent router: what Guide answers from anywhere. Static data.
   // Voice intent router — the COOKING half. The repair entry (modes/repair.js)
@@ -211,11 +241,12 @@ export default {
     if (phase === "triage") return "Guide Mode — working out what's wrong before starting a repair.";
     if (!recipe) return "Guide Mode.";
     const rep = isRepair(recipe);
-    if (phase === "finish") return `Guide Mode — just finished ${rep ? "the repair" : "cooking"} “${recipe.title}”.`;
+    const verbing = recipe.domain === "auto" ? "working on" : rep ? "fixing" : "cooking";
+    if (phase === "finish") return `Guide Mode — just finished ${recipe.domain === "auto" ? "the car job" : rep ? "the repair" : "cooking"} “${recipe.title}”.`;
     if (phase === "safety") return `Guide Mode — about to start “${recipe.title}”, reading the safety prep first.`;
     const list = stepsOf(recipe);
     const s = list[idx];
-    let out = `Guide Mode — ${rep ? "fixing" : "cooking"} “${recipe.title}”${aiDrafted ? " (AI-drafted, unverified)" : ""}. ` +
+    let out = `Guide Mode — ${verbing} “${recipe.title}”${aiDrafted ? " (AI-drafted, unverified)" : ""}. ` +
       (s.isVerify ? "Final check" : `Step ${idx + 1} of ${list.length}`) + `: ${s.text}`;
     if (cueOf(s)) out += ` (cue: ${cueOf(s)})`;
     const left = timerLeftMs();
@@ -315,49 +346,85 @@ export default {
   _safetyAcked: () => safetyAcked,
   _triage: { start: () => startTriage(), answer: (i) => answerTriage(i),
     node: () => (triageNode ? triageNode.id : null), stop: () => triageStopMsg },
+  // The current question and its options, so ANOTHER mode can render the shared
+  // triage in its own UI while the traversal stays here. Automotive uses these
+  // rather than walking the tree itself — that would have been a second triage
+  // wearing the first one's data, which is exactly what "don't fork the engine"
+  // was meant to prevent.
+  _triageQ: () => (triageNode ? triageNode.q : ""),
+  _triageOptions: () => (triageNode ? triageNode.options.slice() : []),
+  _packsLoaded: () => recipes.length > 0,
   _pro: () => callProfessional(),
   _setPickerDomain: (d) => { pickerDomain = d; renderPicker(); },
 };
+
+// The picker's three domains, as data. This replaced a pair of `repairMode ?`
+// ternaries when automotive arrived — the same engine, a third list, and no new
+// branch anywhere else in the file.
+const DOMAINS = {
+  cooking: {
+    tab: "🍳 Cook", tabEl: "tabCook", heading: "🍳 What are we making?",
+    blurb: "Say what you're making — <b style=\"color:var(--fg)\">“guide me through making pasta”</b> — and it starts there. Then work hands-free: “next”, “repeat”, “start the timer”, “how does this look?”.",
+    triage: false, draftTitle: "Or ask for any dish", placeholder: "e.g. chicken fried rice",
+    draftNote: "Drafted by your local model — steps are labeled AI-drafted; double-check quantities and temps.",
+  },
+  repair: {
+    tab: "🔧 Fix &amp; build", tabEl: "tabFix", heading: "🔧 What are we fixing?",
+    blurb: "Say what's broken — <b style=\"color:var(--fg)\">“guide me through fixing the sink”</b> — and it starts there. Not sure? Say <b style=\"color:var(--fg)\">“what's wrong”</b> and it'll narrow it down by asking. Safety prep comes first either way.",
+    triage: true, triageTitle: "Not sure what's wrong?",
+    draftTitle: "Or describe the job", placeholder: "e.g. replace a shower head",
+    draftNote: "Drafted by your local model and <strong>not verified by anyone</strong> — check the tools, parts and any shut-off step yourself before you start. Gas, mains wiring, structural, roof and ladder jobs are refused outright.",
+  },
+  auto: {
+    tab: "🚗 Car", tabEl: "tabAuto", heading: "🚗 What are we doing on the car?",
+    blurb: "Everything here is bonnet-up or standing beside the car. Not sure what a noise is? Say <b style=\"color:var(--fg)\">“what's wrong”</b> and it'll narrow it down by when it happens. <b style=\"color:var(--fg)\">Anything that needs the car raised, or touches brakes, steering, suspension, airbags, fuel or high voltage, is refused outright</b> — those aren't driveway jobs.",
+    triage: true, triageTitle: "Not sure what that noise is?",
+    draftTitle: "Or describe the job", placeholder: "e.g. change the cabin filter",
+    draftNote: "Drafted by your local model and <strong>not verified by anyone</strong>. Under-vehicle work, brakes, steering, suspension, airbags, seat belts, fuel and hybrid/EV high-voltage systems are refused before anything is drafted.",
+  },
+};
+
+// Is the engine actually on screen? Automotive drives the SHARED triage while
+// Guide itself is closed, and teardown() empties `els` — so every render path
+// has to be able to say "not mine to draw" instead of dereferencing a node that
+// isn't there. Verification hit this as `Cannot read properties of undefined
+// (reading 'style')` the first time the triage was walked from another mode.
+function mounted() { return !!(els && els.wrap && els.cam); }
 
 // ---------------------------------------------------------------- picker
 function renderPicker() {
   phase = "pick";
   triageNode = null; triageStopMsg = "";
+  if (!mounted()) return;
   els.cam.style.display = "none";
   els.shade.style.display = "";
-  const repairMode = pickerDomain === "repair";
-  const list = recipes.filter((r) => (r.domain === "repair") === repairMode);
+  const d = DOMAINS[pickerDomain] || DOMAINS.cooking;
+  const repairMode = pickerDomain !== "cooking";      // "has safety prep / tools"
+  const list = recipes.filter((r) => (r.domain || "cooking") === pickerDomain);
   const w = els.wrap;
   w.innerHTML = `
     <div style="max-width:560px; margin:0 auto;">
       <div style="display:flex; gap:6px; margin:6px 2px 10px;">
-        <button class="fbChip ${repairMode ? "" : "on"}" data-el="tabCook">🍳 Cook</button>
-        <button class="fbChip ${repairMode ? "on" : ""}" data-el="tabFix">🔧 Fix &amp; build</button>
+        ${Object.entries(DOMAINS).map(([id, m]) =>
+          `<button class="fbChip ${pickerDomain === id ? "on" : ""}" data-el="${m.tabEl}">${m.tab}</button>`).join("")}
       </div>
-      <h2 style="font-size:20px; margin:2px 2px 4px;">${repairMode ? "🔧 What are we fixing?" : "🍳 What are we making?"}</h2>
-      <div style="color:var(--dim); font-size:12.5px; line-height:1.5; margin:0 2px 14px;">
-        ${repairMode
-          ? "Say what's broken — <b style=\"color:var(--fg)\">“guide me through fixing the sink”</b> — and it starts there. Not sure? Say <b style=\"color:var(--fg)\">“what's wrong”</b> and it'll narrow it down by asking. Safety prep comes first either way."
-          : "Say what you're making — <b style=\"color:var(--fg)\">“guide me through making pasta”</b> — and it starts there. Then work hands-free: “next”, “repeat”, “start the timer”, “how does this look?”."}
-      </div>
-      ${repairMode ? `
+      <h2 style="font-size:20px; margin:2px 2px 4px;">${d.heading}</h2>
+      <div style="color:var(--dim); font-size:12.5px; line-height:1.5; margin:0 2px 14px;">${d.blurb}</div>
+      ${d.triage ? `
       <button class="card" data-el="triageBtn" style="min-height:0; width:100%; margin-bottom:10px;">
-        <span class="name">🩺 Not sure what's wrong?</span>
+        <span class="name">🩺 ${d.triageTitle}</span>
         <span class="blurb">Answer a couple of quick questions and I'll point you at the right job — or tell you it needs a professional.</span>
         <span class="footNote" style="color:var(--accent); font-family:inherit; font-size:11.5px; font-weight:600;">Start triage →</span>
       </button>` : ""}
       <div data-el="recipeCards" style="display:flex; flex-direction:column; gap:10px;"></div>
       <div style="margin-top:16px; border:1px solid var(--line); border-radius:14px; padding:12px; background:var(--panel);">
-        <div style="font-weight:600; font-size:13.5px; margin-bottom:8px;">${repairMode ? "Or describe the job" : "Or ask for any dish"}</div>
+        <div style="font-weight:600; font-size:13.5px; margin-bottom:8px;">${d.draftTitle}</div>
         <div style="display:flex; gap:8px;">
-          <input type="text" data-el="dishInput" placeholder="${repairMode ? "e.g. replace a shower head" : "e.g. chicken fried rice"}"
+          <input type="text" data-el="dishInput" placeholder="${d.placeholder}"
             style="flex:1; min-width:0;" autocomplete="off">
           <button class="ghostBtn accent" data-el="draftBtn">Draft it</button>
         </div>
-        <div style="color:var(--dim); font-size:11px; margin-top:7px;">
-          ${repairMode
-            ? "Drafted by your local model and <strong>not verified by anyone</strong> — check the tools, parts and any shut-off step yourself before you start. Gas, mains wiring, structural, roof and ladder jobs are refused outright."
-            : "Drafted by your local model — steps are labeled AI-drafted; double-check quantities and temps."}</div>
+        <div style="color:var(--dim); font-size:11px; margin-top:7px;">${d.draftNote}</div>
         <div data-el="draftNote" style="color:var(--warn); font-size:11.5px; margin-top:6px;"></div>
       </div>
     </div>`;
@@ -375,8 +442,10 @@ function renderPicker() {
     card.addEventListener("click", () => selectRecipe(r, false));
     els.recipeCards.appendChild(card);
   });
-  els.tabCook.addEventListener("click", () => { pickerDomain = "cooking"; renderPicker(); });
-  els.tabFix.addEventListener("click", () => { pickerDomain = "repair"; renderPicker(); });
+  for (const [id, m] of Object.entries(DOMAINS)) {
+    const btn = els[m.tabEl];
+    if (btn) btn.addEventListener("click", () => { pickerDomain = id; renderPicker(); });
+  }
   if (els.triageBtn) els.triageBtn.addEventListener("click", () => startTriage());
   els.draftBtn.addEventListener("click", async () => {
     const dish = els.dishInput.value.trim();
@@ -420,6 +489,7 @@ function answerTriage(i) {
   return null;
 }
 function renderTriage() {
+  if (!mounted()) return;
   const w = els.wrap;
   if (triageStopMsg) {
     w.innerHTML = `
@@ -484,7 +554,7 @@ function selectRecipe(r, ai) {
   }
   phase = "steps";
   renderStep();
-  svc.speak(`${isRepair(r) ? "Let's fix" : "Let's make"} ${r.title}. ${stepLine()}`);
+  svc.speak(`${r.domain === "auto" ? "Let's do" : isRepair(r) ? "Let's fix" : "Let's make"} ${r.title}. ${stepLine()}`);
 }
 
 function ackSafety() {
@@ -497,6 +567,7 @@ function ackSafety() {
 }
 
 function renderSafety() {
+  if (!mounted()) return;
   const r = recipe;
   els.wrap.innerHTML = `
     <div style="max-width:560px; margin:0 auto;">
@@ -589,6 +660,7 @@ function finish() {
 }
 
 function renderStep() {
+  if (!mounted()) return;
   const list = stepsOf(recipe);
   const s = list[idx];
   const cue = cueOf(s);
@@ -598,7 +670,7 @@ function renderStep() {
       <div style="display:flex; align-items:center; gap:8px; margin:4px 2px 10px;">
         <button class="ghostBtn" data-el="exitBtn">‹ Recipes</button>
         <div style="flex:1; text-align:center; font-weight:700; font-size:14px;">${recipe.title}</div>
-        <span class="tag learn" style="position:static;">${aiDrafted ? "AI-DRAFTED" : (isRepair(recipe) ? "REPAIR" : "RECIPE")}</span>
+        <span class="tag learn" style="position:static;">${aiDrafted ? "AI-DRAFTED" : (recipe.domain === "auto" ? "CAR" : isRepair(recipe) ? "REPAIR" : "RECIPE")}</span>
       </div>
       ${aiDrafted ? `<div style="color:var(--bad); font-size:11px; text-align:center; margin-bottom:8px; font-weight:600;">${isRepair(recipe) ? "AI-drafted and unverified — check tools, parts and shut-offs against the real thing." : "AI-drafted — double-check quantities and temperatures."}</div>` : ""}
       <div style="border:1px solid var(--line); border-radius:16px; background:var(--panel-solid); padding:16px 16px 14px;">
@@ -637,8 +709,10 @@ function renderStep() {
 }
 
 function renderFinish() {
+  if (!mounted()) return;
   stopTimerDisplay();
   const rep = isRepair(recipe);
+    const verbing = recipe.domain === "auto" ? "working on" : rep ? "fixing" : "cooking";
   els.wrap.innerHTML = `
     <div style="max-width:560px; margin:40px auto 0; text-align:center;">
       <div style="font-size:52px;">${rep ? "🔧" : "🎉"}</div>
@@ -763,6 +837,7 @@ async function visionCheckWithFrame(b64) {
   const s = stepsOf(recipe)[idx];
   const cue = cueOf(s);
   const rep = isRepair(recipe);
+    const verbing = recipe.domain === "auto" ? "working on" : rep ? "fixing" : "cooking";
   const prompt = rep
     ? `The user is doing this repair: ${recipe.title}. Current step: ${s.text}` +
       (cue ? ` They should be looking for: ${cue}.` : "") +

@@ -179,11 +179,87 @@ function pollSession(id) {
 // ---------------------------------------------------------------- summarize
 // MAP-REDUCE: an hour of speech is far past the local model's context, so we
 // summarize each chunk, then summarize the summaries. Never one giant prompt.
+//
+// AND THE REDUCE ITSELF GROWS WITH THE MEETING. That was the hole: MAP was
+// always safe because a chunk is a fixed 900 words, but REDUCE concatenates one
+// partial per chunk, so its prompt scales linearly with length. A long enough
+// meeting walked straight back into the silent truncation that raising num_ctx
+// was supposed to have fixed — a confident summary of a meeting the model had
+// only read the back of.
+//
+// So the reduce is HIERARCHICAL: partials are batched to fit the measured
+// budget, each batch is reduced into a section summary, and the section
+// summaries are reduced again — repeating until one pass fits. Quality degrades
+// gently with length instead of falling off a cliff, and when it happens the
+// user is TOLD, in the summary itself, that it was done in sections.
 function chunkTranscript(text, maxWords = CHUNK_WORDS) {
   const words = String(text || "").split(/\s+/).filter(Boolean);
   const out = [];
   for (let i = 0; i < words.length; i += maxWords) out.push(words.slice(i, i + maxWords).join(" "));
   return out.length ? out : [""];
+}
+
+const REDUCE_INSTRUCTIONS =
+  "These are summaries of consecutive parts of one meeting. Write:\n" +
+  "SUMMARY: two or three sentences covering the whole meeting.\n" +
+  "POINTS: up to five bullet lines, each starting with '- ', covering decisions and action items " +
+  "(include who owns an action if it is stated).\n" +
+  "Use only what is in the text. Do not invent anything.\n\n";
+
+const SECTION_INSTRUCTIONS =
+  "These are summaries of consecutive parts of one meeting. Condense them into at most 90 words of " +
+  "plain prose, keeping every decision, number, date, name and action item. No preamble.\n\n";
+
+// Fold `items` down to a single list that fits one reduce prompt. Returns the
+// surviving list plus how many extra levels of folding it took — 0 means the
+// straightforward single reduce, which is what almost every meeting gets.
+async function foldToFit(items, onProgress) {
+  const budget = svc.companion.promptBudget
+    ? svc.companion.promptBudget()
+    : svc.tokens.promptBudget(svc.tokens.DEFAULT_CONTEXT_TOKENS);
+  // Headroom for the instruction block plus everything companion.ask() adds on
+  // top of it. Measured, not guessed: the shell system prompt is the big one at
+  // ~850 estimated tokens, and the wall-clock line is dropped by `stable: true`.
+  // Retrieval used to land here too — it doesn't any more (`noRetrieval`), which
+  // is what stopped the section prompts overflowing.
+  const SHELL_SYSTEM_PROMPT_TOKENS = 900;
+  const overhead = svc.tokens.estimateTokens(REDUCE_INSTRUCTIONS) + SHELL_SYSTEM_PROMPT_TOKENS
+    + svc.tokens.TEMPLATE_OVERHEAD + 3 * svc.tokens.PER_MESSAGE_OVERHEAD;
+
+  let level = 0, list = items.filter(Boolean);
+  let sections = 0, sectionFailures = 0;
+  // Guard the loop as well as the condition: if a single item were somehow
+  // bigger than the whole budget, folding could never shrink it, and spinning
+  // forever is worse than reporting it.
+  while (level < 4) {
+    const total = list.reduce((n, t) => n + svc.tokens.estimateTokens(t), 0);
+    if (overhead + total <= budget) break;
+    const { batches } = svc.tokens.batchToFit(list, budget - overhead,
+      svc.tokens.estimateTokens(SECTION_INSTRUCTIONS));
+    if (batches.length >= list.length) break;   // no progress possible
+    console.warn(`transcribe: reduce prompt ~${overhead + total} tokens over a ${budget} budget — ` +
+      `folding ${list.length} partials into ${batches.length} sections (level ${level + 1})`);
+    const next = [];
+    for (let i = 0; i < batches.length; i++) {
+      if (onProgress) onProgress(i / batches.length);
+      const r = await svc.companion.ask(SECTION_INSTRUCTIONS + batches[i].join("\n\n"),
+        "", [], { maxTokens: 220, temperature: 0.1, stable: true, noRetrieval: true });
+      if (r.ok && r.text) {
+        next.push(r.text.trim());
+      } else {
+        // A failed section is a HOLE in the summary, so it gets recorded rather
+        // than papered over with a truncated copy of the input that reads like
+        // a summary but isn't one.
+        console.warn(`transcribe: section ${i + 1}/${batches.length} failed to summarise —`, r.text);
+        sectionFailures++;
+        next.push(batches[i].join(" ").slice(0, 600));
+      }
+    }
+    sections = batches.length;
+    list = next;
+    level++;
+  }
+  return { list, level, sections, sectionFailures };
 }
 
 async function summarizeSession(id) {
@@ -196,28 +272,48 @@ async function summarizeSession(id) {
     // MAP: one short summary per chunk.
     const partial = [];
     for (let i = 0; i < parts.length; i++) {
-      s.progress = 0.1 + 0.7 * (i / parts.length);
+      s.progress = 0.1 + 0.6 * (i / parts.length);
       render();
       const r = await svc.companion.ask(
         "Summarise this part of a meeting transcript in at most 60 words. Keep any decisions, " +
         "numbers, dates and action items. Plain prose, no preamble.\n\n" + parts[i],
-        "", [], { maxTokens: 140, temperature: 0.1, stable: true });
+        "", [], { maxTokens: 140, temperature: 0.1, stable: true, noRetrieval: true });
       partial.push(r.ok && r.text ? r.text.trim() : "");
     }
-    // REDUCE: one short summary + key points from the partials only.
+    // FOLD: only does anything when the partials won't fit one reduce prompt.
+    s.progress = 0.7; render();
+    const folded = await foldToFit(partial, (f) => { s.progress = 0.7 + 0.15 * f; render(); });
+    s.sectioned = folded.level > 0 ? { levels: folded.level, sections: folded.sections } : null;
+
+    // REDUCE: one short summary + key points from the (possibly folded) partials.
     s.progress = 0.85; render();
-    const joined = partial.filter(Boolean).join("\n\n");
-    const r2 = await svc.companion.ask(
-      "These are summaries of consecutive parts of one meeting. Write:\n" +
-      "SUMMARY: two or three sentences covering the whole meeting.\n" +
-      "POINTS: up to five bullet lines, each starting with '- ', covering decisions and action items " +
-      "(include who owns an action if it is stated).\n" +
-      "Use only what is in the text. Do not invent anything.\n\n" + joined,
-      "", [], { maxTokens: 320, temperature: 0.1, stable: true });
+    const joined = folded.list.filter(Boolean).join("\n\n");
+    const r2 = await svc.companion.ask(REDUCE_INSTRUCTIONS + joined,
+      "", [], { maxTokens: 320, temperature: 0.1, stable: true, noRetrieval: true });
+    // An overflow refusal from the guard is not a summary — say so plainly
+    // rather than pasting the refusal in as if it were the meeting.
+    if (!r2.ok && r2.overflow) {
+      s.status = "ready"; s.progress = 1;
+      s.summary = "I couldn't summarise this one in a single pass even after condensing it in sections — " +
+        "the full transcript is below, untouched.";
+      s.points = [];
+      persist(); render();
+      return;
+    }
     const out = (r2.ok && r2.text) ? r2.text : joined;
     const sum = (out.match(/SUMMARY:\s*([\s\S]*?)(?:\n\s*POINTS:|$)/i) || [])[1];
     const pts = (out.match(/POINTS:\s*([\s\S]*)$/i) || [])[1];
     s.summary = (sum || out).trim().slice(0, 900);
+    // ANNOUNCE IT. A sectioned summary is a weaker summary, and the user is the
+    // one who decides whether that matters — so it is stated in the summary
+    // itself, not hidden in a field only the code reads. Silence here would be
+    // the same failure as the silent truncation, one layer up.
+    if (s.sectioned) {
+      s.summary = `This one was longer than I can summarise in a single pass, so I did it in ` +
+        `${s.sectioned.sections} sections and then combined them — some fine detail will have been lost, ` +
+        `and the full transcript is below. ` + s.summary;
+      s.summary = s.summary.slice(0, 1200);
+    }
     s.points = (pts || "").split("\n").map((l) => l.replace(/^\s*[-•*]\s*/, "").trim())
       .filter((l) => l.length > 2).slice(0, 6);
     s.status = "ready"; s.progress = 1;
@@ -516,6 +612,11 @@ export default {
   _state: () => ({ recording, sessions: sessions.map((s) => ({ id: s.id, title: s.title, status: s.status, progress: s.progress, inMemory: s.inMemory, points: s.points, summary: s.summary })) }),
   _pickMime: () => pickMime(),
   _chunk: (t, n) => chunkTranscript(t, n),
+  // The hierarchical reduce, exposed so an over-length transcript can be driven
+  // through the REAL folding path (not a reimplementation of it) and the
+  // sectioning observed rather than inferred.
+  _fold: (partials) => foldToFit(partials, null),
+  _sectioned: (id) => { const s = sessions.find((x) => x.id === id); return s ? s.sectioned || null : null; },
   _addSession: (s) => { sessions.unshift(s); persist(); render(); return s.id; },
   _summarize: (id) => summarizeSession(id),
   _pushToMemory: (id) => pushToMemory(id),

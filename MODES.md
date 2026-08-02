@@ -367,6 +367,41 @@ Every mode keeps its manual panel, but **collapsed and secondary** behind a
 `▸ Set manually` expander. Typing must keep working everywhere — loud rooms,
 privacy, and precision are all real.
 
+## The context guard — why a mode never has to think about prompt size
+
+Every `/chat` prompt in the app is assembled in one place, `companion.ask()`, and
+sized there before it goes out. A mode does not need to know the context window
+exists.
+
+What the guard does, in order:
+
+1. Estimates the whole message list with `services/tokens.js`. The estimator is
+   fitted against Ollama's own tokenizer and deliberately over-counts — never
+   under — because an under-count is invisible and gets the front of a prompt
+   silently dropped.
+2. If it's over budget, drops **conversation history oldest-first, then the
+   retrieval block**, and reports what went as `res.notice`.
+3. Never drops the system prompt, a mode's `systemExtra`, or the user's own
+   question. If those alone don't fit, nothing is sent and the caller gets
+   `{ ok: false, overflow: true }` with the token numbers in the text.
+4. Checks the answer against ground truth: the bridge returns the real
+   `promptTokens`, its `numCtx`, and a `truncated` flag. If the runtime cut the
+   prompt anyway, `res.notice` says the answer is partial.
+
+Two things a mode author should know:
+
+- **`res.notice`** may be present on a successful answer. The shell surfaces it
+  next to the reply. Don't splice it into `res.text` — callers that parse the
+  text as data (Guide's draft JSON, the transcription reducer) would break.
+- **`opts.noRetrieval`** turns off the knowledge-library lookup for that call.
+  Use it for mechanical transforms — summarising a chunk, translating a sign,
+  reformatting — where reference notes are irrelevant. It saves an embedding
+  round trip and roughly 2,000 tokens of budget.
+
+If a mode does its own batching (Transcribe's map-reduce is the only one today),
+size it from `companion.promptBudget()` rather than a constant. The bridge is
+the only thing that knows its own `num_ctx`, and it reports it on `/health`.
+
 ## Reference implementation
 
 [`modes/pendulum.js`](modes/pendulum.js) exercises the whole surface: gesture-gated

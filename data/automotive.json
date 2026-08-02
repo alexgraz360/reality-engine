@@ -1,0 +1,189 @@
+{
+  "_note": "Automotive packs and triage nodes for the EXISTING Guide engine. Packs carry domain 'auto' so the one engine filters them into their own tab; triage nodes merge into the ONE triage tree in repairs.json and are answered by the same startTriage/answerTriage functions. Nothing here is a second engine. Every job in this file is bonnet-up or wheel-side-on: nothing requires the car to be raised, and nothing touches brakes, steering, suspension, restraints, fuel or high voltage — those are refused by services/autoSafety.js before anything gets this far.",
+
+  "rootOption": { "label": "A noise from my car", "next": "auto-noise" },
+
+  "triage": [
+    {
+      "id": "auto-noise",
+      "q": "When do you hear it?",
+      "options": [
+        { "label": "When I brake", "stop": "auto-brake-noise" },
+        { "label": "When I turn", "stop": "auto-turn-noise" },
+        { "label": "When I accelerate", "next": "auto-noise-accel" },
+        { "label": "Only on a cold start", "stop": "auto-cold-noise" },
+        { "label": "All the time, and it rises with speed", "stop": "auto-speed-noise" },
+        { "label": "I can't tell", "stop": "auto-noise-unclear" }
+      ]
+    },
+    {
+      "id": "auto-noise-accel",
+      "q": "Does it follow the engine, or the road speed?",
+      "options": [
+        { "label": "Rises and falls with engine revs", "stop": "auto-engine-speed-noise" },
+        { "label": "Follows how fast the car is moving", "stop": "auto-speed-noise" },
+        { "label": "A knock or rattle only under load", "stop": "auto-load-knock" },
+        { "label": "I can't tell", "stop": "auto-noise-unclear" }
+      ]
+    }
+  ],
+
+  "triageStops": {
+    "auto-brake-noise": "A noise that appears when you brake is coming from the braking system, and that puts it out of my scope in both directions: I won't guide work on brakes, and I won't tell you it's fine to leave. Grinding in particular usually means the friction material is gone and metal is on metal, which damages the discs every time you stop. Book it in now rather than this week, and describe it to the garage exactly as you did to me — when it happens, and whether it's a squeal, a grinding or a grating.",
+    "auto-turn-noise": "A noise that only shows up when you turn is usually a driveshaft joint or a wheel bearing. A clicking or knocking that gets louder on full lock is the classic CV joint; a droning or rumbling that changes as you steer is more often a bearing. Both are steering-and-suspension territory, so this is a garage job — and both get worse, so it's a this-week thing rather than a someday thing.",
+    "auto-cold-noise": "A noise only on a cold start is most often a belt — a squeal for a few seconds until things warm and the rubber grips again — or an exhaust joint blowing until the metal expands and seals. Neither is an emergency and neither is something I'd have you working on in a driveway. Mention to the garage that it clears once warm; that detail is what separates the two.",
+    "auto-speed-noise": "A noise that tracks road speed rather than engine speed is coming from something that turns with the wheels — a bearing, a tyre wearing unevenly, or something caught in the tread. A droning hum that changes when you swerve gently is the classic wheel bearing. Have someone look this week; a bearing that's been left long enough can seize.",
+    "auto-engine-speed-noise": "A noise that rises and falls with the revs rather than with road speed is in the engine bay — a belt, a pulley, a tensioner or an exhaust leak near the manifold. Have it looked at rather than diagnosed from here: this is exactly the kind of noise that sounds obvious in person and is impossible to place from a description.",
+    "auto-load-knock": "A knock or rattle that only appears under load is worth taking seriously and I'm not going to narrow it further from here — the range runs from a loose heat shield, which is nothing, to a bottom-end knock, which is an engine. The difference matters far too much to guess at. Get it heard by someone in person, soon.",
+    "auto-noise-unclear": "I can't narrow this one down from what you've told me, and I'd rather say so than send you after the wrong part. The three details that actually separate car noises are: exactly when it happens, whether it follows the engine or the road speed, and whether it changes when you steer or brake. If you can pin any of those down, come back and I'll try again — otherwise a garage hearing it in person will get there far faster than I will."
+  },
+
+  "packs": [
+    {
+      "id": "auto-oil-check",
+      "title": "Check and top up your engine oil",
+      "domain": "auto",
+      "difficulty": "easy",
+      "timeEstimate": "10 min",
+      "keywords": ["oil", "dipstick", "engine oil", "top up oil", "oil level"],
+      "tools": ["A clean rag or paper towel", "A funnel"],
+      "parts": ["The correct oil grade for your car — the owner's manual or the cap says which"],
+      "safety": [
+        "Engine OFF, parked on level ground. A reading taken on a slope is wrong, and a wrong reading is worse than no reading.",
+        "Let it stand at least ten minutes after running so the oil drains back down, or the dipstick reads low.",
+        "This job is bonnet-up only. Nothing here needs the car raised and you should not be under it.",
+        "If the red oil-pressure light is on, do not run the engine to check anything — that light means oil is not reaching the bearings."
+      ],
+      "steps": [
+        { "text": "Park level, switch off, and wait ten minutes.", "tip": "Cold in the morning before you drive is the easiest time to get an honest reading." },
+        { "text": "Open the bonnet and find the dipstick — a loop or T-handle, usually yellow or orange.", "checkCue": "the handle pulled clear with the whole stick out" },
+        { "text": "Pull it right out, wipe it clean with the rag, and push it fully back in.", "tip": "The first pull is always smeared. Only the second reading counts." },
+        { "text": "Pull it out again and read where the oil film ends against the two marks.", "checkCue": "a clear oil line between the MIN and MAX marks" },
+        { "text": "If it's at or below MIN, add oil a little at a time through the filler cap using the funnel.", "tip": "MIN to MAX is usually about one litre on a car. Add half, wait, re-check." },
+        { "text": "Wait two minutes after each pour, then re-check with the wipe-and-reinsert routine.", "checkCue": "the level rising towards MAX but not past it" },
+        { "text": "Note the colour while you're there: honey to light brown is fresh, black and thin means it's due a change, and creamy or milky is a reason to stop and ask a garage." }
+      ],
+      "verify": {
+        "text": "Level sits between MIN and MAX — nearer MAX is fine, above it is not. Cap on tight, dipstick fully seated, bonnet closed.",
+        "checkCue": "a reading in the top half of the range and no oil on the outside of the stick"
+      }
+    },
+    {
+      "id": "auto-wipers",
+      "title": "Replace your wiper blades",
+      "domain": "auto",
+      "difficulty": "easy",
+      "timeEstimate": "10 min",
+      "keywords": ["wiper", "wipers", "wiper blade", "blades", "windscreen", "windshield"],
+      "tools": ["Nothing — this is a hands-only job"],
+      "parts": ["A pair of blades in the right size for your car — the sizes are often different left and right"],
+      "safety": [
+        "Fold the arms up gently and lay a folded towel on the glass before you start. A wiper arm springing back onto a windscreen can crack it, and that's the expensive way to learn this.",
+        "Do one blade at a time so you always have the other in front of you as a reference.",
+        "If the arm itself is bent or the spring is dead, that's a different job — a new blade won't fix it."
+      ],
+      "steps": [
+        { "text": "Lay a folded towel on the windscreen, then lift one wiper arm until it locks upright." },
+        { "text": "Turn the blade sideways to the arm and find the release — usually a tab you squeeze or a small clip you press.", "tip": "Look at how it's assembled before you pull anything. Most are obvious once you've seen the joint." },
+        { "text": "Slide the old blade down and off the hook.", "checkCue": "the bare arm hook with nothing on it" },
+        { "text": "Slide the new blade on the same way until the clip clicks.", "checkCue": "an audible click, and the blade won't slide back off when you tug it" },
+        { "text": "Lower the arm gently onto the glass — do not let it snap down.", "tip": "Guide it all the way with your hand." },
+        { "text": "Repeat on the other side, and check the rear wiper if the car has one." }
+      ],
+      "verify": {
+        "text": "Wet the screen with the washers and run a full cycle. Watch for streaks, skipping or chatter.",
+        "checkCue": "clean glass in one sweep, no lines left behind and no juddering"
+      }
+    },
+    {
+      "id": "auto-cabin-filter",
+      "title": "Replace the cabin air filter",
+      "domain": "auto",
+      "difficulty": "easy",
+      "timeEstimate": "15–25 min",
+      "keywords": ["cabin filter", "pollen filter", "air filter", "smelly air", "musty"],
+      "tools": ["Usually nothing; sometimes a small screwdriver"],
+      "parts": ["A cabin filter for your exact model"],
+      "safety": [
+        "Engine off, keys out. You'll be in the footwell with your head under the dash and you don't want anything running.",
+        "On most cars this is behind the glovebox and needs no tools. If yours needs the dash apart, stop — that's not this job.",
+        "Photograph the old filter in place before you remove it. The airflow arrow has to point the same way going back in."
+      ],
+      "steps": [
+        { "text": "Empty the glovebox and open it fully.", "tip": "Most gloveboxes have stops or dampers that unclip so the box drops right down." },
+        { "text": "Release the stops or damper arm and let the glovebox hang, exposing the filter cover.", "checkCue": "a flat plastic cover with clips, roughly the size of a paperback" },
+        { "text": "Photograph the cover and the filter edge so you have the orientation, then unclip the cover." },
+        { "text": "Slide the old filter out slowly and keep it flat — it will be full of leaves and grit.", "tip": "Have a bag ready. This is the messiest part of the job by a distance." },
+        { "text": "Wipe out the housing with a dry cloth.", "checkCue": "a clean, empty slot" },
+        { "text": "Slide the new filter in with the airflow arrow pointing the same way the old one did.", "checkCue": "the arrow matching your photo" },
+        { "text": "Clip the cover back on and swing the glovebox back up until the stops re-engage." }
+      ],
+      "verify": {
+        "text": "Start the car, put the fan on full, and check airflow from the vents is at least as strong as before and no longer smells musty.",
+        "checkCue": "strong, odourless airflow on full fan"
+      }
+    },
+    {
+      "id": "auto-battery-terminals",
+      "title": "Clean corroded battery terminals",
+      "domain": "auto",
+      "difficulty": "easy",
+      "timeEstimate": "20–30 min",
+      "keywords": ["battery", "terminal", "terminals", "corrosion", "white powder", "slow start"],
+      "tools": ["A spanner for the terminal clamps (usually 10 mm)", "A wire brush or an old toothbrush", "Gloves and eye protection"],
+      "parts": ["Bicarbonate of soda and warm water", "Petroleum jelly or terminal grease"],
+      "safety": [
+        "Eye protection and gloves, not optional. The white or blue crust on a terminal is a corrosive salt and battery acid burns.",
+        "NEGATIVE (−, usually black) comes off FIRST and goes back on LAST. Take the positive off first and a slipped spanner touching bodywork shorts the battery across your hand.",
+        "Never let a spanner bridge both terminals, and don't rest tools on top of the battery.",
+        "No smoking, no sparks — a charging battery gives off hydrogen.",
+        "If your car is a hybrid or EV, the 12 V battery is an ordinary battery and this job is normal. But if you see ANY orange cabling, stop and close the bonnet: that's the high-voltage system and it is not a home job.",
+        "A battery that is bulging, split, or leaking is scrap. Don't clean it, don't charge it — take it to be recycled."
+      ],
+      "steps": [
+        { "text": "Engine off, keys out, bonnet up. Put your gloves and eye protection on.", "tip": "Know your radio code first if the car is old enough to need one." },
+        { "text": "Loosen and remove the NEGATIVE (−) clamp first, and tuck the cable aside so it can't spring back onto the post.", "checkCue": "the black clamp clear of the post and held away" },
+        { "text": "Now remove the POSITIVE (+) clamp the same way.", "checkCue": "both clamps off and neither touching metal" },
+        { "text": "Mix a spoon of bicarbonate of soda into a cup of warm water — it neutralises the acid salts.", "tip": "It will fizz on contact with the corrosion. That's the reaction doing the work." },
+        { "text": "Brush the posts and the inside of the clamps until the metal is bright.", "checkCue": "clean, shiny lead with no white or blue crust left" },
+        { "text": "Dry everything thoroughly with a rag. Do not reconnect anything damp.", "checkCue": "dry posts and dry clamps" },
+        { "text": "Refit the POSITIVE (+) clamp first and tighten until it won't twist by hand.", "tip": "Snug, not brutal. The posts are soft lead and will deform." },
+        { "text": "Refit the NEGATIVE (−) clamp last and tighten the same way.", "checkCue": "neither clamp moves when you try to rock it" },
+        { "text": "Smear a thin film of petroleum jelly or terminal grease over the outside of both connections to keep moisture out." }
+      ],
+      "verify": {
+        "text": "Start the car. It should turn over faster and more decisively than before. Switch off, and check neither clamp moves when you try to rock it by hand.",
+        "checkCue": "a crisp start and two clamps that won't budge"
+      }
+    },
+    {
+      "id": "auto-tyre-pressure",
+      "title": "Check and set your tyre pressures",
+      "domain": "auto",
+      "difficulty": "easy",
+      "timeEstimate": "15 min",
+      "keywords": ["tyre", "tire", "pressure", "psi", "bar", "pump up", "inflate", "tpms"],
+      "tools": ["A pressure gauge, or the one on a forecourt airline"],
+      "parts": ["Nothing"],
+      "safety": [
+        "Check them COLD — before you drive, or after the car has stood a couple of hours. Warm tyres read high, and setting them warm leaves you underinflated tomorrow.",
+        "Use the figures on the sticker in the driver's door shut, in the fuel flap, or in the manual — NOT the number moulded into the tyre wall. That one is the tyre's maximum, not your car's setting.",
+        "This is a job you do standing beside the car. Nothing here requires it to be raised.",
+        "If a tyre keeps going down, that's a puncture and it needs a tyre shop, not another top-up."
+      ],
+      "steps": [
+        { "text": "Find your car's figures — driver's door shut sticker, fuel flap, or the manual.", "checkCue": "two numbers, often different front and rear, and sometimes a laden figure too" },
+        { "text": "Unscrew the dust cap from the first tyre and keep it somewhere you won't lose it.", "tip": "Pockets lose caps. Put all four in the same place." },
+        { "text": "Push the gauge squarely onto the valve until the hissing stops, and read it.", "checkCue": "a steady reading with no air escaping around the gauge" },
+        { "text": "Add or release air until it matches the figure for that position.", "tip": "Most forecourt airlines let you dial the target in and beep when they get there." },
+        { "text": "Do all four, then the spare if the car has one.", "tip": "The spare is the one everybody forgets, and it is flat exactly when you need it." },
+        { "text": "While you're at each wheel, look at the tread and the sidewall.", "checkCue": "even wear across the tread, no bulges, cuts or cords showing" },
+        { "text": "Refit all the dust caps." }
+      ],
+      "verify": {
+        "text": "All four match the sticker, checked cold, and no tyre shows a bulge, a cut or uneven wear across its width.",
+        "checkCue": "four matching readings and four caps back on"
+      }
+    }
+  ]
+}

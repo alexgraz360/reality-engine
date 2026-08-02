@@ -189,6 +189,36 @@ export const SAMPLE_CARDS = [
     },
   },
   {
+    // Verdict first, urgency with it — the handoff's requirement, and the right
+    // one: with your head under a bonnet, "COOLANT · don't drive" is the whole
+    // message and everything after it is detail.
+    mode: "automotive", label: "Car · leak identified",
+    card: {
+      title: "COOLANT",
+      lines: ["DON'T DRIVE IT", "bright green, front", "overheats → head gasket"],
+      spoken: "Coolant — don't drive it. Losing coolant means the engine can overheat, and an overheated engine warps a head gasket in minutes. I can't tell you a car is safe to drive.",
+      holdMs: 10000,
+    },
+  },
+  {
+    mode: "automotive", label: "Car · warning light",
+    card: {
+      title: "OIL PRESSURE",
+      lines: ["STOP NOW", "pull over, switch off", "not a low-oil reminder"],
+      spoken: "Oil pressure warning — stop now. Pull over as soon as it is safe and switch the engine off. An engine running without oil pressure can be destroyed in under a minute.",
+      holdMs: 10000,
+    },
+  },
+  {
+    mode: "automotive", label: "Car · refused",
+    card: {
+      title: "Not a DIY job",
+      lines: ["under a lifted car", "a jack can drop it", "shop with a lift"],
+      spoken: "No — I won't help with working under a lifted vehicle: a car coming off a jack is the single most common way a home mechanic is killed, and I can't see your setup.",
+      holdMs: 9000,
+    },
+  },
+  {
     mode: "freefall", label: "Free Fall · measured g",
     card: {
       title: "g ≈ 9.21",

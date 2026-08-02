@@ -1,0 +1,223 @@
+{
+  "_note": "VENDORED VERDICT DATA. Every urgency line here is a fixed string. The model is never asked what a light means or what a puddle is, and cannot change any verdict on this page — same discipline as data/chemistry-safety.json, and for the same reason: 'that's fine to drive on' is a claim that can hurt someone. Nothing in this file clears a vehicle as safe to drive; the strongest wording available is 'get it checked'.",
+
+  "urgency": {
+    "stop-now": { "rank": 4, "label": "STOP NOW", "line": "Pull over as soon as it is safe to do so and switch the engine off." },
+    "dont-drive": { "rank": 3, "label": "DON'T DRIVE IT", "line": "Don't drive it — get it recovered or looked at where it stands." },
+    "today": { "rank": 2, "label": "TODAY", "line": "Get this looked at today rather than leaving it." },
+    "this-week": { "rank": 1, "label": "THIS WEEK", "line": "Book it in this week; don't ignore it." },
+    "when-convenient": { "rank": 0, "label": "WHEN CONVENIENT", "line": "Worth sorting when you get a chance." }
+  },
+
+  "always": [
+    "I can't tell you a car is safe to drive — nobody can from a description or a photo.",
+    "If in doubt, the cheap option is a phone call to a garage; the expensive one is finding out."
+  ],
+
+  "unknownLeak": "That doesn't match anything in my table, and I'm not going to guess at a fluid. Put clean cardboard under it overnight so you get a clear colour and position, and if it's more than a few drops or you can't identify it, have someone look before you drive.",
+  "unknownLight": "That doesn't match a symbol in my table. The owner's manual has the full legend for your exact car and it is the authority here — mine is a common-symbols list, not your manufacturer's.",
+
+  "leaks": [
+    {
+      "id": "coolant",
+      "fluid": "Coolant (antifreeze)",
+      "colours": ["bright green", "green", "orange", "pink", "red-orange", "blue", "yellow-green", "fluorescent"],
+      "position": "front centre, under the radiator or a hose",
+      "texture": "watery, slightly slimy between the fingers, sweet smell",
+      "urgency": "dont-drive",
+      "why": "Losing coolant means the engine can overheat, and an overheated engine warps a head gasket in minutes — a cheap hose turns into an engine rebuild.",
+      "notice": "Temperature gauge climbing above its normal position, or a sweet smell after a drive.",
+      "extra": "Never open the cap to check it while it's hot."
+    },
+    {
+      "id": "engine-oil",
+      "fluid": "Engine oil",
+      "colours": ["light brown", "amber", "dark brown", "black", "brown-black"],
+      "position": "middle of the car, under the engine",
+      "texture": "slippery, thick, greasy, smells of oil",
+      "urgency": "today",
+      "why": "A small drip is common and often just a seal; a puddle is not. Oil pressure loss destroys an engine faster than any other fault on this list.",
+      "notice": "Check the dipstick before driving. A low level plus a red oil light is the stop-now case.",
+      "extra": "Note how big the patch is after a night parked — that's the number a garage will ask for."
+    },
+    {
+      "id": "transmission",
+      "fluid": "Transmission fluid",
+      "colours": ["red", "bright red", "reddish brown", "dark red", "brown-red"],
+      "position": "middle-to-front, roughly under where your feet are",
+      "texture": "oily but thinner than engine oil, distinctive slightly sharp smell",
+      "urgency": "today",
+      "why": "An automatic gearbox run low destroys itself quickly and is one of the most expensive repairs on a car.",
+      "notice": "Slipping, delayed or harsh gear changes.",
+      "extra": "Red fluid is worth taking seriously even in small amounts."
+    },
+    {
+      "id": "brake-fluid",
+      "fluid": "Brake fluid",
+      "colours": ["clear", "pale yellow", "light brown", "amber-clear"],
+      "position": "behind a wheel, or under the pedal area at the back of the engine bay",
+      "texture": "slick and oily, feels slippery, does not evaporate",
+      "urgency": "dont-drive",
+      "why": "The braking system is sealed and hydraulic. If fluid is escaping, pressure is escaping, and brakes fail without much warning once air gets in.",
+      "notice": "A pedal that feels soft, spongy or travels further than usual.",
+      "extra": "This is the one leak on the list where the answer is simply: don't drive it, have it recovered."
+    },
+    {
+      "id": "power-steering",
+      "fluid": "Power steering fluid",
+      "colours": ["red", "reddish", "amber", "clear-red", "light brown"],
+      "position": "front of the engine bay, often dripping near a front wheel",
+      "texture": "oily, thinner than engine oil",
+      "urgency": "this-week",
+      "why": "You keep steering when it runs out, but it gets very heavy suddenly, and the pump is damaged by running dry.",
+      "notice": "A whine or groan when turning, especially at parking speed, and heavier steering.",
+      "extra": "Red fluid at the front can be power steering or transmission — the position is what separates them."
+    },
+    {
+      "id": "washer-fluid",
+      "fluid": "Screen wash",
+      "colours": ["blue", "bright blue", "purple", "pink-blue", "clear-blue"],
+      "position": "anywhere near the front, often after a top-up",
+      "texture": "watery, thin, smells of alcohol or detergent",
+      "urgency": "when-convenient",
+      "why": "Not a mechanical problem. A cracked bottle or a split pipe.",
+      "notice": "The washers stop working or empty unusually fast.",
+      "extra": ""
+    },
+    {
+      "id": "ac-condensation",
+      "fluid": "Air-conditioning condensation",
+      "colours": ["clear", "colourless", "water", "clear water"],
+      "position": "under the passenger side, roughly mid-car",
+      "texture": "plain water, no smell, no feel on the fingers, evaporates",
+      "urgency": "when-convenient",
+      "why": "Almost always nothing at all. Air conditioning dehumidifies the cabin air and the water has to go somewhere.",
+      "notice": "It happens on warm days after running the air conditioning, and dries up.",
+      "extra": "This is the single most common 'my car is leaking' panic, and the answer is usually that it isn't."
+    },
+    {
+      "id": "fuel",
+      "fluid": "Petrol or diesel",
+      "colours": ["clear", "straw", "pale yellow", "rainbow sheen", "oily rainbow"],
+      "position": "anywhere along the car, often towards the back",
+      "texture": "thin, evaporates, unmistakable smell",
+      "urgency": "stop-now",
+      "why": "A fuel leak is an ignition source away from a fire, and hot exhaust parts run far above the ignition temperature.",
+      "notice": "You will smell it before you see it.",
+      "extra": "Don't start the engine. Get it recovered."
+    }
+  ],
+
+  "lights": [
+    {
+      "id": "oil-pressure",
+      "name": "Oil pressure warning",
+      "symbol": "red oil can with a drip",
+      "match": ["oil can", "oil light", "oil pressure", "genie lamp", "aladdin", "teapot", "gravy boat", "watering can"],
+      "colour": "red",
+      "urgency": "stop-now",
+      "means": "The engine has lost oil pressure. This is not a 'low oil' reminder — it means oil is not reaching the bearings.",
+      "why": "An engine running without oil pressure can be destroyed in under a minute. Every second of running makes it worse.",
+      "extra": "Switch off first, check the level second."
+    },
+    {
+      "id": "temperature",
+      "name": "Coolant temperature warning",
+      "symbol": "thermometer in wavy liquid",
+      "match": ["thermometer", "temperature", "temp light", "overheat", "wavy lines", "submarine", "boat"],
+      "colour": "red",
+      "urgency": "stop-now",
+      "means": "The engine is overheating.",
+      "why": "Continuing to drive warps the cylinder head and blows the head gasket — the difference between a hose and a four-figure bill is usually about two miles.",
+      "extra": "Let it cool for at least half an hour before opening anything. Don't touch the cap while it's hot."
+    },
+    {
+      "id": "brake-warning",
+      "name": "Brake system warning",
+      "symbol": "exclamation mark in a circle, in brackets",
+      "match": ["brake light", "brake warning", "circle with exclamation", "circle with an exclamation", "exclamation in brackets", "exclamation mark in brackets", "exclamation in a circle", "exclamation mark in a circle", "red exclamation", "parking brake light", "handbrake light"],
+      "colour": "red",
+      "urgency": "dont-drive",
+      "means": "Either the handbrake is still on, or the brake system has a fault — low fluid or a pressure problem.",
+      "why": "If it isn't the handbrake, the system that stops the car is telling you it can't be relied on.",
+      "extra": "Release the handbrake fully. If it stays lit, that's the fault case, and the answer is recovery rather than a careful drive."
+    },
+    {
+      "id": "battery-charge",
+      "name": "Battery / charging warning",
+      "symbol": "battery outline with + and −",
+      "match": ["battery light", "battery symbol", "charging light", "alternator light", "battery with plus and minus"],
+      "colour": "red",
+      "urgency": "today",
+      "means": "The battery is not being charged — usually the alternator or its belt, not the battery itself.",
+      "why": "The car is running off stored charge and will stop when it runs out, wherever it happens to be at the time.",
+      "extra": "Turn off what you don't need — heated screen, air conditioning, stereo — and head somewhere useful rather than home."
+    },
+    {
+      "id": "check-engine",
+      "name": "Check engine / malfunction indicator",
+      "symbol": "engine block outline",
+      "match": ["check engine", "engine light", "engine symbol", "mil", "malfunction indicator", "yellow engine", "amber engine"],
+      "colour": "amber",
+      "urgency": "this-week",
+      "means": "The engine management system has logged a fault. Steady amber is 'get it read'; FLASHING is a misfire and is much more serious.",
+      "why": "A steady light is often something small like a sensor or a loose fuel cap, but it also switches off the emissions monitoring that would catch something bigger.",
+      "extra": "A flashing check-engine light is a stop-now case, not a this-week case: raw fuel is going into the catalytic converter. This is the light that needs a code reader — I can't read the code, and guessing at one sends you replacing the wrong part."
+    },
+    {
+      "id": "abs",
+      "name": "ABS warning",
+      "symbol": "ABS in a circle",
+      "match": ["abs", "abs light", "abs in a circle"],
+      "colour": "amber",
+      "urgency": "this-week",
+      "means": "The anti-lock system has a fault. Normal braking still works; the anti-lock function may not.",
+      "why": "You'll only discover it's missing during an emergency stop on a poor surface, which is the worst possible time to find out.",
+      "extra": "Leave more room than usual until it's fixed."
+    },
+    {
+      "id": "airbag-srs",
+      "name": "Airbag / SRS warning",
+      "symbol": "seated figure with a circle in front",
+      "match": ["airbag light", "srs light", "seated person", "person with a ball", "restraint light"],
+      "colour": "red",
+      "urgency": "today",
+      "means": "The restraint system has a fault and the airbags may not deploy in a crash.",
+      "why": "Nothing about how the car drives changes, which is exactly why people leave it — and it only matters once.",
+      "extra": "This is a job for a garage. Airbag components are explosive and are not a DIY item."
+    },
+    {
+      "id": "tpms",
+      "name": "Tyre pressure warning",
+      "symbol": "horseshoe / cross-section of a tyre with an exclamation mark",
+      "match": ["tyre pressure", "tire pressure", "tpms", "horseshoe", "flat tyre light", "exclamation in a horseshoe"],
+      "colour": "amber",
+      "urgency": "today",
+      "means": "At least one tyre is significantly below its correct pressure — or it's simply gone cold overnight.",
+      "why": "An underinflated tyre overheats, wears out fast and handles badly, and a slow puncture only gets worse.",
+      "extra": "Check all four cold with a gauge against the sticker in the driver's door shut. If one keeps dropping, it's a puncture."
+    },
+    {
+      "id": "power-steering-light",
+      "name": "Power steering warning",
+      "symbol": "steering wheel with an exclamation mark",
+      "match": ["steering light", "power steering light", "eps", "steering wheel symbol"],
+      "colour": "amber",
+      "urgency": "today",
+      "means": "Power assistance has a fault or has been reduced.",
+      "why": "The steering still works but can go heavy without warning, which is a genuine surprise at parking speed.",
+      "extra": ""
+    },
+    {
+      "id": "glow-plug",
+      "name": "Glow plug / pre-heat (diesel)",
+      "symbol": "coiled squiggle",
+      "match": ["glow plug", "coil symbol", "squiggle", "preheat", "diesel coil"],
+      "colour": "amber",
+      "urgency": "when-convenient",
+      "means": "Normal on a cold start — it goes out when the engine is ready to crank. Staying on or flashing afterwards is a fault.",
+      "why": "Flashing usually points at the engine management on a diesel rather than the glow plugs themselves.",
+      "extra": ""
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import glasses from "./services/glasses.js";
 import router from "./services/router.js";
 import { SAMPLE_CARDS, coveredModes } from "./services/sampleCards.js";
 import slotFiller from "./services/slots.js";
+import tokens from "./services/tokens.js";
 
 // ---------------------------------------------------------------- mode registry
 // USABLE modes only — every entry here renders an "Open" card under its family.
@@ -57,6 +58,12 @@ const REGISTRY = [
     permissions: ["camera", "mic"],
     blurb: "Unclog a sink, fix a dripping tap, mend a puncture, build the flat-pack — hands-free, safety prep first, and it ends by proving the fix actually worked. Gas and mains wiring are refused, not attempted.",
     load: () => import("./modes/repair.js"),
+  },
+  {
+    id: "automotive", title: "Car · what's it doing?", family: "Live", icon: "🚗",
+    permissions: ["camera", "mic"],
+    blurb: "A noise you can't place, a warning light you don't recognise, a puddle you can't identify — answered from a built-in table with how urgent it actually is, not from the AI. No fault codes, and it will never tell you a car is safe to drive. Anything under a raised car is refused.",
+    load: () => import("./modes/automotive.js"),
   },
   {
     id: "formcoach", title: "Form Coach · one cue at a time", family: "Learn", icon: "🏀",
@@ -159,6 +166,9 @@ const services = {
   actions: localActions, // notes/reminders layer (Guide timers reuse it)
   glasses,               // adapter — modes may send() a GlanceCard directly
   knowledge,             // the shared memory/RAG store (Transcribe files sessions here)
+  tokens,                // context-overflow guard — a mode that batches its own
+                         // work (Transcribe's map-reduce) sizes it from here
+                         // rather than guessing at the window
   // Speak through the shell's normal voice path (Piper/system, session-guarded).
   speak(text) {
     const willSpeak = speakReply(String(text || ""), () => setStatus("idle"));
@@ -2258,6 +2268,11 @@ function formatRemindersReadback() {
 function handleAssistantReply(question, res, opts) {
   const parsed = extractAction(res.text);
   let assistantText = parsed.text || res.text;
+  // CONTEXT HONESTY. If the overflow guard had to leave something out to make
+  // the prompt fit — or, worse, if the bridge reports the runtime cut the front
+  // off anyway — the user is told alongside the answer. An answer built from
+  // part of its input must never look identical to one built from all of it.
+  if (res.notice) transcriptNote(res.notice);
   let emittedMemoryCard = false;   // a recall card takes precedence on the HUD
   // MEMORY HONESTY (enforced here, not merely asked for in the prompt): if the
   // user asked about their own things/people/past and NOTHING personal was
