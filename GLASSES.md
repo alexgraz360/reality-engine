@@ -12,7 +12,7 @@ active mode's `getContext()` to a multimodal model → answer by voice + overlay
 What exists now (**Companion P0 — live**):
 - `companion.ask(prompt, context)` — the stable seam every caller uses. It POSTs to a
   **personal bridge**: a token-gated, rate-limited proxy in front of a **local model**
-  (Ollama) on the user's own machine, reached over HTTPS via a Cloudflare tunnel.
+  (Ollama) on the user's own machine, reached over HTTPS via a Tailscale Funnel.
   $0, private, nothing leaves the user's hardware. Text-first Q&A via the ✦ sheet.
 - The endpoint URL + token are entered in **Settings → Companion** and stored in
   the device's localStorage only — **no secrets in this repo, ever**.
@@ -33,7 +33,7 @@ A stub with the final shape, so the Halo SDK bridge drops into one file:
 
 | method | job when real |
 |---|---|
-| `connect()` / `disconnect()` | pair with Halo (SDK handshake, likely BLE/WebBluetooth) |
+| `connect()` / `disconnect()` | pair with Halo (BLE bonding, then the Lua service `7A230001-…`) |
 | `mirrorHUD(hud)` | push the active mode's **glanceable** HUD to the glasses display (small declarative payload, not a video stream — Halo is monocular/glanceable by design) |
 | `routeMic()` / `routeCamera()` | feed the glasses' mic + camera into `services/sensors`, so modes and the companion don't care whether input comes from the phone or the glasses |
 | `onWake(fn)` | tap / wake-word hook that starts a companion interaction |
@@ -44,8 +44,14 @@ through `services/overlay`, swapping the *source* (glasses mic/cam) and adding a
 
 ## Configuring Halo — the checklist (for future-us)
 
-1. **Unbox + firmware:** update Halo, install the Brilliant Labs SDK / verify the
-   phone-side bridge app or WebBluetooth path works from Safari.
+1. **Unbox + firmware:** update Halo (MCUboot/SMP over BLE), then **settle the host
+   question first — it is blocking.** ⚠️ **Web Bluetooth does not exist on iOS**, in
+   Safari or in any other iOS browser, because Apple forces every one of them onto
+   WebKit and WebKit lists it as "not considering". So "verify the WebBluetooth path
+   works from Safari" — which this checklist used to say — is not a task, it is an
+   impossibility. The candidate hosts are a third-party iOS browser that ships its own
+   BLE stack (Bluefy / WebBLE), a Chromium browser on Android, or the bridge PC.
+   See §7 of `REALITY_ENGINE_PLATFORM.md` and `HANDOFF_RE_TECH_SWEEP.md` PART 1.
 2. **Pair:** implement `glassesAdapter.connect()` with the SDK handshake; confirm
    `isConnected()` flips true.
 3. **Mirror the HUD:** define the small HUD payload (a few text lines + numbers, e.g.
