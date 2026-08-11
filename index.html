@@ -407,16 +407,20 @@
   #glassesSafeRing { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
     width: 224px; height: 224px; border-radius: 50%; border: 1px dashed rgba(120,210,140,0.22);
     pointer-events: none; }
-  /* Additive-looking monochrome text: a single phosphor-green, soft glow, no fills. */
+  /* Light-on-black text, soft glow, no fills. The Halo panel is FULL RGB (contract
+     corrected 2026-08-10), so a card carrying a `color` sets --glance-color and
+     overrides the defaults below; a card without one renders exactly as before. */
   #glassesTitle { font-family: var(--mono); font-size: 17px; font-weight: 700; letter-spacing: 0.02em;
-    color: #8affc0; text-shadow: 0 0 8px rgba(120,255,180,0.55); margin-bottom: 8px; line-height: 1.15; }
+    color: var(--glance-color, #8affc0); text-shadow: 0 0 8px rgba(120,255,180,0.55); margin-bottom: 8px; line-height: 1.15; }
   #glassesLines { display: flex; flex-direction: column; gap: 5px; }
-  #glassesLines div { font-family: var(--mono); font-size: 13px; color: #b6f0ff;
+  #glassesLines div { font-family: var(--mono); font-size: 13px; color: var(--glance-color, #b6f0ff);
     text-shadow: 0 0 7px rgba(120,220,255,0.5); line-height: 1.25; }
   #glassesEmpty { font-family: var(--mono); font-size: 12px; color: rgba(150,200,180,0.45); }
   #glassesPreview.alert #glassesLens { box-shadow: 0 0 0 3px #2a0b0b, 0 0 30px rgba(255,120,90,0.5),
       inset 0 0 40px rgba(0,0,0,0.9); }
-  #glassesPreview.alert #glassesTitle { color: #ffd08a; text-shadow: 0 0 10px rgba(255,180,90,0.7); }
+  /* An explicit card colour still wins over the alert tint — the alert already
+     announces itself through the lens glow, and a mode that named a colour meant it. */
+  #glassesPreview.alert #glassesTitle { color: var(--glance-color, #ffd08a); text-shadow: 0 0 10px rgba(255,180,90,0.7); }
   #glassesCaption { display: flex; align-items: center; gap: 8px; font-family: var(--mono);
     font-size: 10px; letter-spacing: 0.08em; color: var(--dim); text-transform: uppercase; }
   #glassesPreviewClose, #galleryBtn { background: var(--panel-solid); border: 1px solid var(--line);

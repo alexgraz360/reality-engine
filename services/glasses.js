@@ -5,9 +5,17 @@
 // built from public hardware facts and one design idea:
 //
 //   PUBLIC HARDWARE FACTS this is shaped around
-//     • The HUD is a small CIRCULAR additive display (~256x256, safe radius ~112).
-//       Additive means light-on-black: only lit pixels show, so we design for
-//       short bright text on black, never dense UI.
+//       (CORRECTED 2026-08-10 against docs.brilliant.xyz — see HANDOFF_RE_TECH_SWEEP.md)
+//     • The HUD is a 256x256 drawable area on a 640x480 OLEDoS panel (safe radius
+//       ~112). Light-on-black: black is not drawn, so we design for short bright
+//       text on black, never dense UI.
+//     • It is FULL RGB, not monochrome. Draw calls take 0xRRGGBB directly. The
+//       16-entry named palette (VOID / WHITE / GREY / RED / ... / CLOUDBLUE) is for
+//       INDEXED BITMAPS, not for the display as a whole — mapping a colour onto a
+//       palette slot is a transport-layer concern, not part of this contract.
+//     • "Circular" is single-sourced (the Lua API page says "256x256 (round)"; the
+//       hardware manual never states the shape). Corner behaviour is undocumented,
+//       so the safe radius stays conservative until the device pass confirms it.
 //     • The BLE link is low-bandwidth. A tiny TEXT CARD is effectively free to
 //       send; there is NO live video; a camera SNAPSHOT is a deliberate
 //       one-per-look event (our existing /vision "look" flow already matches).
@@ -27,8 +35,18 @@
 //     spoken?:  string    // sentence to say aloud (may differ from the text)
 //     holdMs?:  number    // min time to keep it up; clamped to [MIN_HOLD, MAX_HOLD]
 //     priority?:'normal' | 'alert'   // 'alert' preempts the min-hold/rate cap
+//     color?:   string    // '#rrggbb' accent for the whole card; null = renderer's choice
 //   }
 // Anything else on the object is dropped. Non-string title/lines are rejected.
+//
+// WHY color IS ONE FIELD AND NOT PER-LINE: lines are strings, and that is the
+// safety promise — a mode cannot smuggle a non-string through. Per-line colour
+// would make lines objects and break it for every existing caller. One accent per
+// card covers the real use ("COOLANT · don't drive" in red) at no cost to that.
+//
+// WHY HEX AND NOT PALETTE NAMES: 0xRRGGBB is confirmed in the official Lua API.
+// The full 16 palette slot names are only partially documented publicly, so this
+// contract refuses to guess at them; the transport maps hex -> slot when it needs to.
 // ----------------------------------------------------------------------------
 
 export const LIMITS = Object.freeze({
@@ -41,6 +59,11 @@ export const LIMITS = Object.freeze({
   DEFAULT_HOLD: 5000,
   MIN_GAP: 500,      // >= this between rendered cards (rate cap)
 });
+
+// A card colour must be a literal #rrggbb. Anything else (a name, a CSS colour,
+// a function, an object) is DROPPED with a note and the default is used — same
+// discipline as every other field: never coerce, never guess.
+const HEX_RE = /^#[0-9a-f]{6}$/i;
 
 const subscribers = new Set();   // preview / future renderers
 let current = null;              // last card actually rendered
@@ -116,8 +139,19 @@ export function makeCard(input) {
 
   const priority = input.priority === "alert" ? "alert" : "normal";
 
+  // null means "the renderer picks" — NOT a colour. That keeps every existing
+  // caller byte-identical: a card that never mentions colour renders exactly as
+  // it did before this field existed.
+  let color = null;
+  if (input.color != null) {
+    if (typeof input.color !== "string") note("dropped non-string color");
+    else if (!HEX_RE.test(input.color.trim())) note(`dropped invalid color ${JSON.stringify(input.color)} (want #rrggbb)`);
+    else color = input.color.trim().toLowerCase();
+  }
+
   // A fresh, frozen object — no reference to caller state, nothing executable.
   return Object.freeze({ title, lines: Object.freeze(lines), spoken, holdMs, priority,
+    color,
     dismissible: true });   // every card is always dismissible on the device
 }
 

@@ -202,7 +202,7 @@ function pullActiveGlance() {
   let card;
   try { card = active.mod.getGlanceCard(); } catch (e) { console.error("getGlanceCard failed:", e); return; }
   if (!card) return;
-  const sig = JSON.stringify([card.title, card.lines]);
+  const sig = JSON.stringify([card.title, card.lines, card.color]);
   if (sig === lastPolledGlance) return;   // unchanged — don't re-send
   lastPolledGlance = sig;
   glasses.send(card);
@@ -222,9 +222,15 @@ glasses.subscribe((card) => {
     glassesLinesEl.innerHTML = "";
     glassesEmptyEl.style.display = "block";
     glassesPreviewEl.classList.remove("alert");
+    glassesPreviewEl.style.removeProperty("--glance-color");
     return;
   }
   glassesEmptyEl.style.display = "none";
+  // The card's colour is already validated to #rrggbb by services/glasses, so it
+  // can only ever be a literal hex string or null here — never author-supplied CSS.
+  // null removes the property, so the lens falls back to its default styling.
+  if (card.color) glassesPreviewEl.style.setProperty("--glance-color", card.color);
+  else glassesPreviewEl.style.removeProperty("--glance-color");
   glassesTitleEl.textContent = card.title || "";
   glassesLinesEl.innerHTML = "";
   for (const line of card.lines) {

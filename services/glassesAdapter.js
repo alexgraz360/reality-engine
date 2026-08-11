@@ -23,6 +23,14 @@ export const glassesAdapter = {
   // Mirror a glanceable HUD frame/text to the glasses display.
   // `hud` will be a small declarative payload (text lines / simple vector ops),
   // NOT a full canvas stream — the Halo display is glanceable, not immersive.
+  //
+  // `hud` is a GlanceCard from services/glasses (already clamped + validated
+  // there — this adapter must never re-validate or re-shape it). As of 2026-08-10
+  // that card carries a `color` ('#rrggbb'): the Halo display is FULL RGB, and
+  // Lua draw calls take 0xRRGGBB directly, so a real implementation converts
+  // '#rrggbb' -> 0xRRGGBB. Mapping onto Halo's 16 named palette SLOTS is only
+  // needed for indexed bitmaps, and belongs here in the transport, not in the
+  // card contract. See HANDOFF_RE_TECH_SWEEP.md.
   mirrorHUD(hud) { /* no-op stub */ },
 
   // Route glasses inputs into the engine. Future implementations return the same
