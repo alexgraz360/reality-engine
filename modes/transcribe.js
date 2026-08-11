@@ -210,6 +210,46 @@ const SECTION_INSTRUCTIONS =
   "These are summaries of consecutive parts of one meeting. Condense them into at most 90 words of " +
   "plain prose, keeping every decision, number, date, name and action item. No preamble.\n\n";
 
+// ⚠️ UNVALIDATED CONSTANT — a guess that survived one failed attempt to confirm it.
+//
+// The fold triggers at this fraction of the usable prompt budget rather than at
+// the limit, on the theory that the model stops honouring the SUMMARY:/POINTS:
+// format near the top of its window, before anything is actually truncated.
+//
+// WHERE IT CAME FROM: ONE observation. A single 9-hour transcript produced 76
+// partials, the fold correctly decided they FIT, and the reduce came back as
+// unlabelled prose at roughly 7,000 tokens — so the parse fell through and the
+// "summary" was four restated partials with no key points. 0.75 was picked to
+// sit well under that. It was never measured.
+//
+// ATTEMPT TO CONFIRM IT (2026-08-11) — IT DID NOT REPRODUCE. Driving
+// qwen2.5:7b-instruct directly at the production settings (temperature 0.1,
+// seed 42, num_predict 320, num_ctx 8192) with synthetic partials, format
+// adherence held at every point tried:
+//
+//     total prompt   partials   SUMMARY:/POINTS:
+//         2,004         13            ok
+//         5,517         60            ok
+//         6,938         79            ok
+//         7,314         84            ok      <- above the original failure,
+//                                                more parts than the 76 case
+//
+// WHY THAT IS NOT A LICENCE TO RAISE IT: the partials were generated from a
+// template, so they are far more uniform than real MAP output; there was one
+// run per point; and the ~900-token shell system prompt was approximated rather
+// than used verbatim. The failure was seen once on REAL data and could not be
+// reproduced on SYNTHETIC data, which is not the same as it not existing.
+//
+// WHAT IT COSTS TODAY: usable partial space drops 6385 -> 4529 tokens (-29.1%),
+// so meetings in that band get sectioned — a weaker summary, plus the "I did it
+// in N sections" line — where they would previously have had one clean pass.
+//
+// TO SETTLE IT: re-run the sweep against REAL transcripts of varying length and
+// density, several reps per point, through the bridge rather than Ollama
+// directly. Until then this number is a guard, not a measurement, and it should
+// not be quoted as one. Tracked in MODES_CHECKLIST.md.
+const FOLD_SAFETY_FACTOR = 0.75;
+
 // Fold `items` down to a single list that fits one reduce prompt. Returns the
 // surviving list plus how many extra levels of folding it took — 0 means the
 // straightforward single reduce, which is what almost every meeting gets.
@@ -226,17 +266,10 @@ async function foldToFit(items, onProgress) {
   const overhead = svc.tokens.estimateTokens(REDUCE_INSTRUCTIONS) + SHELL_SYSTEM_PROMPT_TOKENS
     + svc.tokens.TEMPLATE_OVERHEAD + 3 * svc.tokens.PER_MESSAGE_OVERHEAD;
 
-  // FOLD BEFORE THE WINDOW IS FULL, not when it overflows.
-  //
-  // A 9-hour transcript was driven through this end to end and the fold
-  // correctly decided 76 real partials FIT — and the answer was still bad: at
-  // roughly 7,000 tokens the model stopped following the SUMMARY:/POINTS:
-  // format and returned unlabelled prose, so the parse fell through and the
-  // "summary" was four restated partials with no key points at all. That is the
-  // same failure as a truncated prompt wearing a different hat, and it starts
-  // BEFORE the hard limit. So the target is 75% of the usable budget: the model
-  // degrades near the edge long before the runtime cuts anything.
-  const softBudget = Math.floor(budget * 0.75);
+  // FOLD BEFORE THE WINDOW IS FULL, not when it overflows. The factor is an
+  // UNVALIDATED guess — see the block comment on FOLD_SAFETY_FACTOR above for
+  // where it came from and for the measurement that failed to reproduce it.
+  const softBudget = Math.floor(budget * FOLD_SAFETY_FACTOR);
 
   let level = 0, list = items.filter(Boolean);
   let sections = 0, sectionFailures = 0;
