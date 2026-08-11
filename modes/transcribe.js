@@ -222,9 +222,21 @@ async function foldToFit(items, onProgress) {
   // ~850 estimated tokens, and the wall-clock line is dropped by `stable: true`.
   // Retrieval used to land here too — it doesn't any more (`noRetrieval`), which
   // is what stopped the section prompts overflowing.
-  const SHELL_SYSTEM_PROMPT_TOKENS = 900;
+  const SHELL_SYSTEM_PROMPT_TOKENS = 900;    // measured at 881 — see the Build Log
   const overhead = svc.tokens.estimateTokens(REDUCE_INSTRUCTIONS) + SHELL_SYSTEM_PROMPT_TOKENS
     + svc.tokens.TEMPLATE_OVERHEAD + 3 * svc.tokens.PER_MESSAGE_OVERHEAD;
+
+  // FOLD BEFORE THE WINDOW IS FULL, not when it overflows.
+  //
+  // A 9-hour transcript was driven through this end to end and the fold
+  // correctly decided 76 real partials FIT — and the answer was still bad: at
+  // roughly 7,000 tokens the model stopped following the SUMMARY:/POINTS:
+  // format and returned unlabelled prose, so the parse fell through and the
+  // "summary" was four restated partials with no key points at all. That is the
+  // same failure as a truncated prompt wearing a different hat, and it starts
+  // BEFORE the hard limit. So the target is 75% of the usable budget: the model
+  // degrades near the edge long before the runtime cuts anything.
+  const softBudget = Math.floor(budget * 0.75);
 
   let level = 0, list = items.filter(Boolean);
   let sections = 0, sectionFailures = 0;
@@ -233,12 +245,13 @@ async function foldToFit(items, onProgress) {
   // forever is worse than reporting it.
   while (level < 4) {
     const total = list.reduce((n, t) => n + svc.tokens.estimateTokens(t), 0);
-    if (overhead + total <= budget) break;
-    const { batches } = svc.tokens.batchToFit(list, budget - overhead,
+    if (overhead + total <= softBudget) break;
+    const { batches } = svc.tokens.batchToFit(list, softBudget - overhead,
       svc.tokens.estimateTokens(SECTION_INSTRUCTIONS));
     if (batches.length >= list.length) break;   // no progress possible
-    console.warn(`transcribe: reduce prompt ~${overhead + total} tokens over a ${budget} budget — ` +
-      `folding ${list.length} partials into ${batches.length} sections (level ${level + 1})`);
+    console.warn(`transcribe: reduce prompt ~${overhead + total} tokens over a ${softBudget} comfort ` +
+      `budget (hard limit ${budget}) — folding ${list.length} partials into ${batches.length} ` +
+      `sections (level ${level + 1})`);
     const next = [];
     for (let i = 0; i < batches.length; i++) {
       if (onProgress) onProgress(i / batches.length);
@@ -271,6 +284,7 @@ async function summarizeSession(id) {
   try {
     // MAP: one short summary per chunk.
     const partial = [];
+    const mapFailures = [];
     for (let i = 0; i < parts.length; i++) {
       s.progress = 0.1 + 0.6 * (i / parts.length);
       render();
@@ -278,8 +292,19 @@ async function summarizeSession(id) {
         "Summarise this part of a meeting transcript in at most 60 words. Keep any decisions, " +
         "numbers, dates and action items. Plain prose, no preamble.\n\n" + parts[i],
         "", [], { maxTokens: 140, temperature: 0.1, stable: true, noRetrieval: true });
-      partial.push(r.ok && r.text ? r.text.trim() : "");
+      if (r.ok && r.text) {
+        partial.push(r.text.trim());
+      } else {
+        // A CHUNK THAT FAILED IS A MISSING PIECE OF THE MEETING. The old code
+        // pushed "" and the fold's filter(Boolean) then removed it without
+        // trace, so a summary built from 70 of 76 chunks looked exactly like one
+        // built from all 76. That is the same silent-hole failure this whole
+        // pass exists to eliminate, one layer further in.
+        mapFailures.push(i + 1);
+        console.warn(`transcribe: chunk ${i + 1}/${parts.length} failed to summarise —`, r.text);
+      }
     }
+    s.mapFailures = mapFailures.length;
     // FOLD: only does anything when the partials won't fit one reduce prompt.
     s.progress = 0.7; render();
     const folded = await foldToFit(partial, (f) => { s.progress = 0.7 + 0.15 * f; render(); });
@@ -303,7 +328,21 @@ async function summarizeSession(id) {
     const out = (r2.ok && r2.text) ? r2.text : joined;
     const sum = (out.match(/SUMMARY:\s*([\s\S]*?)(?:\n\s*POINTS:|$)/i) || [])[1];
     const pts = (out.match(/POINTS:\s*([\s\S]*)$/i) || [])[1];
+    // THE FORMAT CHECK. If neither marker came back, the model didn't do the job
+    // asked of it — and the old code quietly presented whatever prose arrived as
+    // the summary, with an empty key-points list, which is how a 9-hour meeting
+    // came back as four restated fragments and looked fine. Say it instead.
+    const malformed = !sum && !pts;
+    if (malformed) {
+      console.warn("transcribe: the reduce came back without SUMMARY:/POINTS: — " +
+        `${svc.tokens.estimateTokens(joined)} est. tokens of partials went in`);
+    }
     s.summary = (sum || out).trim().slice(0, 900);
+    if (malformed) {
+      s.summary = "The model didn't return a structured summary for this one, so what follows is its raw " +
+        "answer and there are no key points — the full transcript below is the reliable copy. " + s.summary;
+      s.summary = s.summary.slice(0, 1200);
+    }
     // ANNOUNCE IT. A sectioned summary is a weaker summary, and the user is the
     // one who decides whether that matters — so it is stated in the summary
     // itself, not hidden in a field only the code reads. Silence here would be
@@ -312,8 +351,15 @@ async function summarizeSession(id) {
       s.summary = `This one was longer than I can summarise in a single pass, so I did it in ` +
         `${s.sectioned.sections} sections and then combined them — some fine detail will have been lost, ` +
         `and the full transcript is below. ` + s.summary;
-      s.summary = s.summary.slice(0, 1200);
     }
+    // Missing chunks are the most important thing on this screen: a summary of
+    // most of a meeting must never read like a summary of all of it.
+    const holes = (s.mapFailures || 0) + (folded.sectionFailures || 0);
+    if (holes) {
+      s.summary = `Heads up — ${holes} part${holes > 1 ? "s" : ""} of this recording couldn't be ` +
+        `summarised, so this covers the rest of it and not all of it. ` + s.summary;
+    }
+    s.summary = s.summary.slice(0, 1400);
     s.points = (pts || "").split("\n").map((l) => l.replace(/^\s*[-•*]\s*/, "").trim())
       .filter((l) => l.length > 2).slice(0, 6);
     s.status = "ready"; s.progress = 1;
