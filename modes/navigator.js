@@ -103,7 +103,25 @@ function headingTrustworthy() {
   if (headingSource === "ios-true") {
     return headingAccuracy == null || (headingAccuracy >= 0 && headingAccuracy <= COMPASS_BAD_DEG);
   }
-  return headingSource === "absolute-alpha";
+  // "absolute-alpha" is deliberately NOT trusted (H19, PART 4).
+  //
+  // On Android, deviceorientationabsolute's alpha is referenced to MAGNETIC
+  // north, while every bearing this mode computes is from TRUE north. The gap
+  // is 15-20 degrees in parts of the world and it is SILENT: the arrow points
+  // confidently wrong, which is worse than no arrow, because the whole promise
+  // of this mode is "walk this way".
+  //
+  // The alternative was to vendor a World Magnetic Model and apply declination
+  // from the position we already have. That was rejected as disproportionate
+  // for a path that is dormant on the only device this is used on (iOS reports
+  // webkitCompassHeading, which IS a true heading and is unaffected by this
+  // change): a WMM carries coefficients that expire every five years, so it
+  // would add a dependency that silently goes stale — trading a known error for
+  // a hidden one. If an Android device pass ever matters, revisit it then.
+  //
+  // Falling through to false routes this to the same words-not-arrow path that
+  // relative-alpha already uses, with an explanation from headingProblem().
+  return false;
 }
 function headingProblem() {
   if (headingSource === "none" || heading == null) {
@@ -112,6 +130,11 @@ function headingProblem() {
   if (headingSource === "relative-alpha") {
     return "This browser only reports a relative orientation, not a true compass heading, " +
       "so an arrow would point the wrong way. Showing the direction in words instead.";
+  }
+  if (headingSource === "absolute-alpha") {
+    return "This device reports a magnetic compass heading, but bearings here are measured " +
+      "from true north — a gap of 15-20° in some places. Showing the direction in words " +
+      "rather than an arrow that would look precise and be wrong.";
   }
   if (headingSource === "ios-true" && headingAccuracy != null && headingAccuracy > COMPASS_BAD_DEG) {
     return `The compass is reporting ±${Math.round(headingAccuracy)}° of error — too noisy to trust. ` +
