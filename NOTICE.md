@@ -8,23 +8,28 @@ If you fork this repository, these obligations travel with it.
 
 ---
 
-## Vendored libraries
+## Vendored libraries — verified in-tree
 
-| Path | Project | Licence |
-|---|---|---|
-| `vendor/tfjs/tf.min.js` | TensorFlow.js | Apache-2.0 |
-| `vendor/tfjs/coco-ssd.min.js` | TensorFlow.js Models (COCO-SSD) | Apache-2.0 |
-| `vendor/tfjs/pose-detection.min.js` | TensorFlow.js Models (pose-detection) | Apache-2.0 |
+Each confirmed by reading the `@license` banner inside the file itself, not by
+inferring from the directory name.
 
-## Vendored model weights
+| Path | Project | Licence | How it was verified |
+|---|---|---|---|
+| `vendor/tfjs/tf.min.js` | TensorFlow.js | Apache-2.0 | `@license` banner, "Copyright 2024 Google LLC" |
+| `vendor/tfjs/coco-ssd.min.js` | TensorFlow.js Models (COCO-SSD) | Apache-2.0 | `@license` banner, "Copyright 2023 Google LLC" |
+| `vendor/tfjs/pose-detection.min.js` | TensorFlow.js Models (pose-detection) | Apache-2.0 | `@license` banner, "Copyright 2023 Google LLC" |
+
+## Vendored model weights — stated upstream, not verified in-tree
 
 Model weights are licensed separately from the inference code that loads them.
-Both are Apache-2.0 here.
+These are binary artifacts with **no in-tree licence evidence**, so the entries
+below record what the upstream projects state rather than something confirmed
+here. The distinction is kept deliberately.
 
-| Path | Model | Licence |
+| Path | Model | Licence (as stated upstream) |
 |---|---|---|
-| `vendor/models/coco-ssd-lite/` | COCO-SSD Lite (object detection) | Apache-2.0 |
-| `vendor/models/movenet-lightning/` | MoveNet Lightning (pose estimation) | Apache-2.0 |
+| `vendor/models/coco-ssd-lite/` | COCO-SSD Lite (object detection) | Apache-2.0, per TensorFlow.js Models |
+| `vendor/models/movenet-lightning/` | MoveNet Lightning (pose estimation) | Apache-2.0, per TensorFlow.js Models |
 
 ## Vendored data
 
