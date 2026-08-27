@@ -2,7 +2,9 @@
 
 **One open engine, many modes** — see, measure, and understand the world with the
 sensors you carry. Phone-first now, glasses-ready (Brilliant Labs Halo) by design.
-Fully open source, no build step, no frameworks, no CDN, no secrets.
+**MIT licensed** ([LICENSE](LICENSE)), no build step, no frameworks, no CDN, no secrets.
+Vendored third-party libraries and model weights keep their own licences — see
+[NOTICE.md](NOTICE.md).
 
 **Start here → [VISION.md](VISION.md)** — the platform's compass: what belongs, what
 doesn't, and the reusable cognitive pipelines every mode is built from.
