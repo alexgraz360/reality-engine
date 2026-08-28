@@ -13,12 +13,29 @@
 //       16-entry named palette (VOID / WHITE / GREY / RED / ... / CLOUDBLUE) is for
 //       INDEXED BITMAPS, not for the display as a whole — mapping a colour onto a
 //       palette slot is a transport-layer concern, not part of this contract.
-//     • "Circular" is single-sourced (the Lua API page says "256x256 (round)"; the
-//       hardware manual never states the shape). Corner behaviour is undocumented,
-//       so the safe radius stays conservative until the device pass confirms it.
+//     • "Circular" is STILL single-sourced after reading the firmware. The Lua API
+//       page says "256x256 (round)"; the hardware manual never states a shape; and
+//       the firmware treats the panel as a SQUARE framebuffer — boards/arm/halo/
+//       halo.dts sets width=256 height=256 rgb-888 with the window at (0,0)-(256,
+//       256), and there is no mask, vignette or circular clip anywhere in
+//       modules/canvas/ or lua_display.c. Whether the OPTICS present a round
+//       aperture is a physical question source cannot answer. Corner behaviour
+//       remains undocumented, so the safe radius stays conservative until the
+//       device pass confirms it. (canvas.h storing 3 bytes/pixel does independently
+//       re-confirm FULL RGB above.)
 //     • The BLE link is low-bandwidth. A tiny TEXT CARD is effectively free to
-//       send; there is NO live video; a camera SNAPSHOT is a deliberate
-//       one-per-look event (our existing /vision "look" flow already matches).
+//       send. A camera SNAPSHOT is a deliberate one-per-look event (our existing
+//       /vision "look" flow already matches).
+//       ⚠️ CORRECTED 2026-08-24 FROM FIRMWARE SOURCE (v0.8.x). This line used to
+//       read "there is NO live video", which overstated a true thing. Accurately:
+//       the Lua API gives a script capture -> poll -> read JPEG in chunks, and no
+//       video streaming path. A dedicated video characteristic (7A230004) IS
+//       declared in the GATT table and its transport function IS implemented —
+//       but it has ZERO callers in firmware, and the primary protocol spec never
+//       mentions it. So it is unavailable to a Lua app, NOT impossible on the
+//       wire. Brilliant staff say low-FPS streaming is achievable with custom
+//       development, and NOBODY HAS PUBLISHED A FRAMERATE. Do not design around
+//       it until measured. See HALO_INTEGRATION_NOTES.md §0 and §2.
 //     • Therefore a mode CANNOT ship its phone screen to the glasses. It emits
 //       one short glanceable card plus an optional spoken line.
 //
@@ -232,9 +249,13 @@ export function wrap(text, width = LIMITS.LINE_MAX, maxLines = LIMITS.MAX_LINES)
 //       why cards, not screens, are the unit.
 //     • Camera SNAPSHOTS are on-demand only (the /vision "look" gesture), one
 //       frame per deliberate look — never a stream.
-//     • NEVER attempt live video or continuous raw-audio streaming over BLE;
-//       the link can't carry it and it would drain the device. Voice stays on
-//       the phone; the glasses get text + the occasional snapshot request.
+//     • Do NOT attempt live video or continuous raw-audio streaming here — but
+//       for the accurate reason, not the old one. It is not that "the link can't
+//       carry it": that claim was too strong. It is that no firmware producer
+//       exists for the video characteristic, the achievable framerate is
+//       unmeasured, and continuous streaming would drain the device. Voice stays
+//       on the phone; the glasses get text + the occasional snapshot request.
+//       Revisit only with a measured number in hand.
 //
 // To wire it later: call setTransport(fn). `fn(card)` receives every rendered
 // card (in addition to the preview) and does the BLE write. Left null today.

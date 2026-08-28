@@ -34,7 +34,18 @@ A stub with the final shape, so the Halo SDK bridge drops into one file:
 | method | job when real |
 |---|---|
 | `connect()` / `disconnect()` | pair with Halo (BLE bonding, then the Lua service `7A230001-…`) |
-| `mirrorHUD(hud)` | push the active mode's **glanceable** HUD to the glasses display (small declarative payload, not a video stream — Halo is monocular/glanceable by design) |
+| `mirrorHUD(hud)` | push the active mode's **glanceable** HUD to the glasses display (small declarative payload, not a video stream — Halo is monocular/glanceable by design, and a card is a few dozen bytes) |
+
+> **Contract v3 note (2026-08-24, from firmware source).** The reason for "not a
+> video stream" is glanceability and wire budget, **not** that the wire forbids
+> video. A video characteristic (`7A230004`) is declared in the GATT table with a
+> working transport function and **zero callers in firmware**; the primary
+> protocol spec does not mention it. No streaming path is available to a Lua app,
+> the achievable framerate is unmeasured, and nothing here should be redesigned
+> around it. The corrected contract is `HALO_INTEGRATION_NOTES.md` — note also
+> that `mirrorHUD` will need a colour field mapped to `0xRRGGBB` (already added to
+> the GlanceCard in `50561c3`) and that the display is a **square** 256×256 RGB
+> framebuffer in firmware, with the "round" claim still single-sourced.
 | `routeMic()` / `routeCamera()` | feed the glasses' mic + camera into `services/sensors`, so modes and the companion don't care whether input comes from the phone or the glasses |
 | `onWake(fn)` | tap / wake-word hook that starts a companion interaction |
 
